@@ -11,11 +11,11 @@ Original Creative 4.12 Firmware:<br>
 ```v412-8k_e5d3a248```
 
 Original Creative 4.13 Firmwares:<br>
-```v413-6k_9e1b22c6```
+```v413-6k_9e1b22c6```<br>
 ```v413-8k_e22e9001```
 
 Original Creative 4.16 Firmwares:<br>
-```v416-6k_986e5cb9```
+```v416-6k_986e5cb9```<br>
 ```v416-8k_b15514ef```
 
 ---
