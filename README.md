@@ -8,9 +8,9 @@ This repository contains the firmware dumps and assembly files for the Sound Bla
   <br>
 - The assembly files uploaded is for version 4.13 and includes both the original aswell as a patched version which has several bugfixes.<br>
   Both can be found here: https://github.com/S95Sedan/CT1747_DSP/tree/main/assembly<br>
-  They can be assembled with as31, where the original one returns an exact match as like how it was on the card)
+  They can be assembled with as31, where the original one returns an exact match as like how it was on the card<br>
 <br>
-All the files on here are uploaded for archival aswell as educational purpose, the license for them still belongs to Creative Labs.
-None of this wouldnt have been possible without the people from MAME, Vogons and Siliconp0rn.
-
+All the files on here are uploaded for archival aswell as educational purpose, the license for them still belongs to Creative Labs.<br>
+None of this wouldnt have been possible without the people from MAME, Vogons and Siliconp0rn.<br>
+<br>
 Full documentation of the dumping process of the remaining chips aswell as hanging note fix here: https://www.vogons.org/viewtopic.php?f=46&t=48732
