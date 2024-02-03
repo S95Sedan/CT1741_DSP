@@ -1,4 +1,4 @@
-# Creative Labs - CT1747 - DSP Firmware
+# Creative Labs - CT1741 - DSP Firmware
 
 This repository contains the firmware dumps and assembly files for the Sound Blaster 16 and AWE32 cards produced between 1990 and 2000 which make use of a CT1747 chip to process the DSP instructions.<br>
 <br>
