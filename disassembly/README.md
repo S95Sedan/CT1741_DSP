@@ -8,4 +8,4 @@ For use with Creative 4.16 Firmware:<br>
 
 ---
 ## Disassembling:
-Both files can be decompiled with the software found [Here](https://www.bipom.com/dis51.php)
+Both files can be used to decompile the listed firmwares with the software found [Here](https://www.bipom.com/dis51.php)
