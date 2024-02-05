@@ -1,5 +1,7 @@
-These firmwares are all encrypted, dont use them, they are uploaded incase people want to study/look at them.
-The files can be decrypted using: Cyclic XOR (block by block)
+These firmwares are all encrypted, they are uploaded incase people want to study/look at them.<br>
+The files can be decrypted using: Cyclic XOR (block by block)<br>
+
+---
 
 Encrypted Creative 4.04 Firmware:<br>
 ```v404-8k_fa532147.bin```
