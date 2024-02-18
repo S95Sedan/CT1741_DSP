@@ -1,7 +1,8 @@
-## Firmware Assembly Files:
+## Firmware Assembly Files:<br>
 
 Original Creative 4.13 Firmware:<br>
-```v413-8k_e22e9001.asm```
+```v413-8k_e22e9001.asm```<br>
+###### (File should be properly formatted when loaded in nodepad++)<br>
 
 Patched Creative 4.13 Firmware:<br>
 ```v413-8k_b1a727d9_patch5.asm:```
