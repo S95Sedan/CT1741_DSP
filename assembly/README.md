@@ -2,7 +2,9 @@
 
 Original Creative 4.13 Firmware:<br>
 ```v413-8k_e22e9001.asm```<br>
-###### (File should be properly formatted when loaded in nodepad++)<br>
+Original Creative 4.16 Firmware:<br>
+```v416-6k_986e5cb9.asm```<br>
+###### (Files should be properly formatted when loaded in nodepad++)<br>
 
 Patched Creative 4.13 Firmware:<br>
 ```v413-8k_b1a727d9_patch5.asm:```
