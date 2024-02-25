@@ -10,7 +10,7 @@ This repository contains the firmware dumps (encrypted/decrypted), assembly/disa
   All of them can be found [Here](https://github.com/S95Sedan/CT1747_DSP/tree/main/assembly)<br>
   They can be assembled with AS31, where the original one returns an exact match as like how it was on the card<br>
   <br>
-- The disassembly mappings uploaded are for version 4.13 and 4.16 with the same crc32.<br>
+- The disassembly mappings uploaded are for versions 4.05, 4.13 and 4.16 with the same crc32.<br>
   Both can be found [Here](https://github.com/S95Sedan/CT1747_DSP/tree/main/disassembly)<br>
   They can be disassembled with D52 to get a rough output of what the assembly files would look like.<br>
 <br>
