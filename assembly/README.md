@@ -1,5 +1,7 @@
 ## Firmware Assembly Files:<br>
 
+Original Creative 4.05 Firmware:<br>
+```v405-8k_e51aff23.asm```<br>
 Original Creative 4.13 Firmware:<br>
 ```v413-8k_e22e9001.asm```<br>
 Original Creative 4.16 Firmware:<br>
