@@ -10,11 +10,11 @@
 .EQU rb1r3, 0bh
 .EQU rb1r4, 0ch
 .EQU rb1r5, 0dh
-.EQU dma_blk_len_lo, 0eh		; x
-.EQU dma_blk_len_hi, 0fh		; x
+.EQU dma_blk_len_lo, 0eh
+.EQU dma_blk_len_hi, 0fh
 .EQU rb2r0, 10h
-.EQU length_low, 11h			; x
-.EQU length_high, 12h			; x
+.EQU length_low, 11h
+.EQU length_high, 12h
 .EQU rb2r3, 13h
 .EQU rb2r4, 14h
 .EQU rb2r5, 15h
@@ -23,16 +23,16 @@
 .EQU rb3r0, 18h
 .EQU rb3r1, 19h
 .EQU rb3r2,	1ah
-.EQU command_byte, 20h			; x
-.EQU len_left_lo, 21h			; x
-.EQU len_left_hi, 22h			; x
-.EQU status_register, 23h		; x
-.EQU dsp_dma_id0, 25h			; x
-.EQU dsp_dma_id1, 26h			; x
-.EQU vector_low, 29h			; x
-.EQU vector_high, 2bh			; x
-.EQU warmboot_magic1, 31h		; x
-.EQU warmboot_magic2, 32h		; x
+.EQU command_byte, 20h
+.EQU len_left_lo, 21h
+.EQU len_left_hi, 22h
+.EQU status_register, 23h
+.EQU dsp_dma_id0, 25h
+.EQU dsp_dma_id1, 26h
+.EQU vector_low, 29h
+.EQU vector_high, 2bh
+.EQU warmboot_magic1, 31h
+.EQU warmboot_magic2, 32h
 
 ; ------------------------------
 ; SFR bit Equates
@@ -41,11 +41,11 @@
 .EQU csp_pin_2, 81h
 .EQU csp_pin_3, 82h
 .EQU csp_pin_4, 83h
-.EQU pin_dav_pc, 90h			; x				p1.0
-.EQU pin_dav_dsp, 91h			; x				p1.1
-.EQU pin_dsp_busy, 92h			; x				p1.2
-.EQU pin_drequest, 95h			; x				p1.5
-.EQU pin_dma_emable1, 0a5h		; x				p2.5
+.EQU pin_dav_pc, 90h
+.EQU pin_dav_dsp, 91h
+.EQU pin_dsp_busy, 92h
+.EQU pin_drequest, 95h
+.EQU pin_dma_emable1, 0a5h
 
 ; ------------------------------
 ; Memory bit Equates
@@ -54,12 +54,12 @@
 .EQU command_byte_1, 1
 .EQU command_byte_2, 2
 .EQU command_byte_3, 3
-.EQU pin_mute_en, 1ch			; x				23h.4
-.EQU cmd_avail, 20h				; x				24h.0
-.EQU dma_mode_on, 21h			; x				24h.1
-.EQU dma_8bit_mode, 22h			; x				24h.2
-.EQU dma_16bit_mode, 24h		; x				24h.4
-.EQU midi_timestamp, 25h		; x				24h.5
+.EQU pin_mute_en, 1ch
+.EQU cmd_avail, 20h
+.EQU dma_mode_on, 21h
+.EQU dma_8bit_mode, 22h
+.EQU dma_16bit_mode, 24h
+.EQU midi_timestamp, 25h
 ;
 
 		.org	0
