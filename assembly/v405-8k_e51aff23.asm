@@ -1,4 +1,4 @@
-; 8052 Disassembly of SB DSP version 4.13
+; 8052 Disassembly of SB DSP version 4.05
 
 ; ------------------------------
 ; Register/Memory Equates
@@ -101,28 +101,23 @@ int0_table:
 
 ; ------------------------------
 ; 0fh: DAC playback of silence.
-int0_dac_silence:
-	ljmp	vector_dac_silence
+int0_dac_silence:			ljmp	vector_dac_silence
 ; ------------------------------
 ; 12h: DAC playback, 2-bit ADPCM
-int0_dma_dac_adpcm2:
-	ljmp	vector_dma_dac_adpcm2
+int0_dma_dac_adpcm2:		ljmp	vector_dma_dac_adpcm2
 ; ------------------------------
 ; 15h: DAC playback, 2.6-bit ADPCM
-int0_dma_dac_adpcm4:
-	ljmp	vector_dma_dac_adpcm2_6
+int0_dma_dac_adpcm2_6:		ljmp	vector_dma_dac_adpcm2_6
 ; ------------------------------
 ; 18h: DAC playback, 4-bit ADPCM
-int0_dma_dac_adpcm2_6:
-	ljmp	vector_dma_dac_adpcm4
+int0_dma_dac_adpcm4:		ljmp	vector_dma_dac_adpcm4
 ; ------------------------------
 ; 1bh: ?
-int0_op5_vector:
-	ljmp	int0_op5_handler
+int0_op5_handler:			ljmp	vector_op5
 
 ; ------------------------------
 ; 1eh: no command
-int0_op_none_handler:
+int0_none_handler:
 		clr		pin_dsp_busy
 		pop		rb0r0
 		pop		dph
@@ -151,7 +146,7 @@ X006e:	pop		rb0r0
 		pop		dph
 		pop		dpl
 		pop		acc
-		reti	
+		reti
 
 ; ------------------------------
 ; Midi Handler?
@@ -180,7 +175,7 @@ midi_timestamp_int:
 		inc		r7
 X0098:	mov		tl0,#2fh
 		mov		th0,#0f8h
-		reti	
+		reti
 
 ; ------------------------------
 ; Vector for 8-bit DMA Playback?
@@ -655,6 +650,7 @@ vector_dac_silence:
 		ljmp	vector_dac_silence_end
 
 vector_dac_silence_byte_available:
+		; Check to see if we have any remaining samples to play.
 		clr		a
 		cjne	a,len_left_lo,vector_dac_silence_get_data_lo
 		cjne	a,len_left_hi,vector_dac_silence_get_data_hi
@@ -692,7 +688,7 @@ vector_dac_silence_end:
 ; ------------------------------
 ; Vector for something, MIDI?
 ; ------------------------------
-int0_op5_handler:
+vector_op5:
 		mov		dptr,#int0_op5_data
 		mov		a,r7
 		movc	a,@a+dptr
@@ -1113,11 +1109,12 @@ cmdg_status:
 table_status_cmds:
 		.db	75h,0f8h,10h,43h,4ch,34h,55h,5ah
 		.db	6ch,91h,67h,9dh,0c8h,75h,78h,86h
-		
+
 ; ------------------------------
 ; 10h: command 02
 ; ------------------------------
-cmd_02:	lcall	dsp_input_data
+cmd_02:
+		lcall	dsp_input_data
 		mov		r0,#80h
 		movx	@r0,a
 		mov		a,#0f2h
@@ -1140,7 +1137,8 @@ X068a:	ljmp	X06e7
 ; ------------------------------
 ; 34h: command 05
 ; ------------------------------
-cmd_05:	lcall	dsp_input_data
+cmd_05:
+		lcall	dsp_input_data
 		mov		r0,#80h
 		movx	@r0,a
 		lcall	dsp_input_data
@@ -1151,7 +1149,8 @@ cmd_05:	lcall	dsp_input_data
 ; ------------------------------
 ; 43h: command 03
 ; ------------------------------
-cmd_03:	mov		r0,#80h
+cmd_03:
+		mov		r0,#80h
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	X06e7
@@ -1159,7 +1158,8 @@ cmd_03:	mov		r0,#80h
 ; ------------------------------
 ; 4ch: command 04
 ; ------------------------------
-cmd_04:	lcall	dsp_input_data
+cmd_04:
+		lcall	dsp_input_data
 		mov		r0,#82h
 		movx	@r0,a
 		ljmp	X06e7
@@ -1167,13 +1167,15 @@ cmd_04:	lcall	dsp_input_data
 ; ------------------------------
 ; 55h: command 06
 ; ------------------------------
-cmd_06:	inc		vector_high
+cmd_06:
+		inc		vector_high
 		ljmp	X06e7
 
 ; ------------------------------
 ; 5ah: command 07
 ; ------------------------------
-cmd_07:	mov		a,vector_high
+cmd_07:
+		mov		a,vector_high
 		cjne	a,#0,X06bb
 		ljmp	X06e7
 
@@ -1183,13 +1185,15 @@ X06bb:	dec		vector_high
 ; ------------------------------
 ; 67h: command 0A
 ; ------------------------------
-cmd_0A:	mov		a,vector_high
+cmd_0A:
+		mov		a,vector_high
 		lcall	dsp_output_data
 
 ; ------------------------------
 ; 6ch: command 08
 ; ------------------------------
-cmd_08:	mov		r0,#82h
+cmd_08:
+		mov		r0,#82h
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	X06e7
@@ -1204,7 +1208,8 @@ cmd_0D:
 ; ------------------------------
 ; 78h: command 0E: X-Bus poke function
 ; ------------------------------
-cmd_0E:	lcall	dsp_input_data
+cmd_0E:
+		lcall	dsp_input_data
 		mov		b,a
 		lcall	dsp_input_data
 		mov		r0,b
@@ -1214,7 +1219,8 @@ cmd_0E:	lcall	dsp_input_data
 ; ------------------------------
 ; 86h: command 0F: X-Bus peek function
 ; ------------------------------
-cmd_0F:	lcall	dsp_input_data
+cmd_0F:
+		lcall	dsp_input_data
 		mov		r0,a
 		movx	a,@r0
 		lcall	dsp_output_data
@@ -1223,7 +1229,8 @@ X06e7:	ljmp	wait_for_cmd
 ; ------------------------------
 ; 91h: command 09
 ; ------------------------------
-cmd_09:	mov		a,rb1r0
+cmd_09:
+		mov		a,rb1r0
 		lcall	dsp_output_data
 		mov		a,rb1r1
 		lcall	dsp_output_data
@@ -1232,7 +1239,8 @@ cmd_09:	mov		a,rb1r0
 ; ------------------------------
 ; 9dh: command 0B
 ; ------------------------------
-cmd_0B:	lcall	dsp_input_data
+cmd_0B:
+		lcall	dsp_input_data
 		mov		len_left_lo,a
 		mov		r0,#80h
 		movx	@r0,a
@@ -1259,7 +1267,8 @@ X071d:	dec		len_left_lo
 ; ------------------------------
 ; 0c8h: command 0C
 ; ------------------------------
-cmd_0C:	lcall	dsp_input_data
+cmd_0C:
+		lcall	dsp_input_data
 		mov		len_left_lo,a
 		mov		r0,#80h
 		movx	@r0,a
@@ -1289,7 +1298,8 @@ X074d:	dec		len_left_lo
 ; ------------------------------
 ; 0f8h: command 01
 ; ------------------------------
-cmd_01:	mov		a,vector_high
+cmd_01:
+		mov		a,vector_high
 		cjne	a,#0,X06e7
 		lcall	dsp_output_data
 		mov		a,#0
@@ -1372,25 +1382,29 @@ table_setup_cmds:
 ; ------------------------------
 ; 10h: command 44
 ; ------------------------------
-cmd_44:	setb	p2.1
+cmd_44:
+		setb	p2.1
 		ljmp	X088a
 
 ; ------------------------------
 ; 15h: command 45
 ; ------------------------------
-cmd_45:	clr	p2.1
+cmd_45:
+		clr		p2.1
 		ljmp	X088a
 
 ; ------------------------------
 ; 1ah: command 46
 ; ------------------------------
-cmd_46:	setb	p2.2
+cmd_46:
+		setb	p2.2
 		ljmp	X088a
 
 ; ------------------------------
 ; 1fh: command 47
 ; ------------------------------
-cmd_47:	clr	p2.2
+cmd_47:
+		clr		p2.2
 		ljmp	X088a
 
 ; ------------------------------
@@ -1402,16 +1416,18 @@ cmd_4_none:
 ; ------------------------------
 ; 27h: command 4E
 ; ------------------------------
-cmd_4E:	clr		23h.6
+cmd_4E:
+		clr		23h.6
 		ljmp	X0818
 
 ; ------------------------------
 ; 2ch: command 4F
 ; ------------------------------
-cmd_4F:	jnb	23h.6,X0816
-		clr	23h.6
-		clr	tr0
-		clr	et0
+cmd_4F:
+		jnb		23h.6,X0816
+		clr		23h.6
+		clr		tr0
+		clr		et0
 		ljmp	X088a
 
 X0816:	setb	23h.6
@@ -1430,7 +1446,8 @@ X0818:	lcall	dsp_input_data
 ; ------------------------------
 ; 51h: command 4C
 ; ------------------------------
-cmd_4C:	lcall	dsp_input_data
+cmd_4C:
+		lcall	dsp_input_data
 		anl		a,#3
 		add		a,#1bh
 		mov		r0,a
@@ -1441,7 +1458,8 @@ cmd_4C:	lcall	dsp_input_data
 ; ------------------------------
 ; 60h: command 4D
 ; ------------------------------
-cmd_4D:	lcall	dsp_input_data
+cmd_4D:
+		lcall	dsp_input_data
 		anl		a,#3
 		add		a,#1bh
 		mov		r0,a
@@ -1452,7 +1470,8 @@ cmd_4D:	lcall	dsp_input_data
 ; ------------------------------
 ; 6fh: command 40: DSP time constant
 ; ------------------------------
-cmd_40:	lcall	dsp_input_data
+cmd_40:
+		lcall	dsp_input_data
 		cjne	a,#0ebh,X0853
 X0853:	jc		X0857
 		mov		a,#0ebh
@@ -1484,7 +1503,8 @@ X086a:	jnb		pin_dav_dsp,X086a
 ; ------------------------------
 ; 0c0h: command 48: DSP block transfer size.
 ; ------------------------------
-cmd_48:	lcall	dsp_input_data
+cmd_48:
+		lcall	dsp_input_data
 		mov		dma_blk_len_lo,a
 		lcall	dsp_input_data
 		mov		dma_blk_len_hi,a
@@ -1496,7 +1516,7 @@ X088a:	ljmp	wait_for_cmd
 ; Samplerate table
 ; ------------------------------
 convert_samplerate:
-		mov	dptr,#samplerate_table
+		mov		dptr,#samplerate_table
 		movc	a,@a+dptr
 		ret	
 
@@ -1535,7 +1555,8 @@ samplerate_table:
 ; ------------------------------
 ; ?
 ; ------------------------------
-X097e:	mov		a,rb2r4
+X097e:
+		mov		a,rb2r4
 		cjne	a,#0b1h,X0988
 		mov		a,#0ffh
 		ljmp	X09e0
@@ -1594,7 +1615,8 @@ X09e0:	ret
 ; ------------------------------
 ; ?
 ; ------------------------------
-X09e1:	mov		r0,#9
+X09e1:
+		mov		r0,#9
 		mov		37h,a
 		cjne	a,#0f8h,X09e8
 X09e8:	jnc		X09ef
@@ -1612,7 +1634,8 @@ X09f2:	mov		r0,#9
 ; ------------------------------
 ; ?
 ; ------------------------------
-X09f8:	jnb		23h.7,X0a00
+X09f8:				 
+		jnb		23h.7,X0a00
 		mov		r0,#9
 		mov		a,#0f8h
 		movx	@r0,a
@@ -1635,7 +1658,8 @@ table_aux_cmds:
 ; ------------------------------
 ; 10h: command F9: Internal RAM peek function
 ; ------------------------------
-cmd_F9:	lcall	dsp_input_data
+cmd_F9:
+		lcall	dsp_input_data
 		mov		r0,a
 		mov		a,@r0
 		lcall	dsp_output_data
@@ -1644,7 +1668,8 @@ cmd_F9:	lcall	dsp_input_data
 ; ------------------------------
 ; 1bh: command FA: Internal RAM poke function
 ; ------------------------------
-cmd_FA:	lcall	dsp_input_data
+cmd_FA:
+		lcall	dsp_input_data
 		mov		b,a
 		lcall	dsp_input_data
 		mov		r0,b
@@ -1654,21 +1679,24 @@ cmd_FA:	lcall	dsp_input_data
 ; ------------------------------
 ; 29h: command FD
 ; ------------------------------
-cmd_FD:	mov		a,30h
+cmd_FD:
+		mov		a,30h
 		lcall	dsp_output_data
 		ljmp	group_F_exit
 
 ; ------------------------------
 ; 31h: command FB
 ; ------------------------------
-cmd_FB:	mov	a,23h
+cmd_FB:
+		mov		a,23h
 		lcall	dsp_output_data
 		ljmp	group_F_exit
 
 ; ------------------------------
 ; 39h: command FC
 ; ------------------------------
-cmd_FC:	mov	a,24h
+cmd_FC:
+		mov		a,24h
 		lcall	dsp_output_data
 		ljmp	group_F_exit
 
@@ -1681,7 +1709,8 @@ cmd_f_none:
 ; ------------------------------
 ; 44h: command F2
 ; ------------------------------
-cmd_F2:	mov	r0,#8
+cmd_F2:
+		mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
@@ -1694,7 +1723,8 @@ cmd_F2:	mov	r0,#8
 ; ------------------------------
 ; 53h: command F3
 ; ------------------------------
-cmd_F3:	mov		r0,#10h
+cmd_F3:
+		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
 		orl		a,#80h
@@ -1706,7 +1736,8 @@ cmd_F3:	mov		r0,#10h
 ; ------------------------------
 ; 61h: command F4
 ; ------------------------------
-cmd_F4:	mov		a,#7dh
+cmd_F4:
+		mov		a,#7dh
 		lcall	dsp_output_data
 		mov		a,#1bh
 		lcall	dsp_output_data
@@ -1715,7 +1746,8 @@ cmd_F4:	mov		a,#7dh
 ; ------------------------------
 ; 6eh: command F8
 ; ------------------------------
-cmd_F8:	jb		command_byte_2,X0a85
+cmd_F8:
+		jb		command_byte_2,X0a85
 		mov		a,#0
 		mov		r0,#0
 		nop	
@@ -1729,7 +1761,8 @@ X0a85:	lcall	X119a
 ; ------------------------------
 ; 7eh: command F0
 ; ------------------------------
-cmd_F0:	mov		a,#5ah
+cmd_F0:
+		mov		a,#5ah
 		lcall	X09e1
 		lcall	X09f2
 		mov		rb1r3,#5
@@ -1757,6 +1790,9 @@ int0_op5_data:
 cmdg_midi:
 		jb		command_byte_3,cmd_midi_write_poll
 		jnb		command_byte_2,cmd_midi_read_write_poll
+		; Command 30: MIDI read poll.
+		; Set up warm boot magic number so we can continue where we left off
+		; after receiving a DSP reset command.
 		mov		warmboot_magic1,#34h
 		mov		warmboot_magic2,#12h
 		ljmp	cmd_midi_read_write_poll
@@ -1765,6 +1801,7 @@ cmdg_midi:
 ; Command 38: MIDI write poll.
 ; ------------------------------
 cmd_midi_write_poll:
+		; Wait for last serial transfer to complete
 		jnb		ti,cmd_midi_write_poll
 		clr		ti
 		lcall	dsp_input_data
@@ -1829,7 +1866,7 @@ midi_check_for_input_data:
 		cjne	r4,#40h,X0b1b
 		sjmp	midi_main_loop
 
-X0b1b:	jnb	pin_dav_pc,midi_flush_buffer_to_host
+X0b1b:	jnb		pin_dav_pc,midi_flush_buffer_to_host
 		sjmp	midi_main_loop
 
 midi_has_input_data:
@@ -1907,7 +1944,8 @@ midi_ready_to_receive_more:
 ; ------------------------------
 ; ?
 ; ------------------------------
-X0b79:	mov		r0,#2
+X0b79:
+		mov		r0,#2
 		mov		a,#0feh
 		movx	@r0,a
 		setb	23h.5
@@ -1946,7 +1984,8 @@ X0bbe:	ret
 ; ------------------------------
 ; ?
 ; ------------------------------
-X0bbf:	mov		r0,#2
+X0bbf:
+		mov		r0,#2
 		movx	a,@r0
 		jb		acc.7,X0bde
 		sjmp	X0b9f
@@ -2359,30 +2398,40 @@ dma_dac2_adpcm_use_2_6bit:
 		mov		rb1r2,#2
 		lcall	X114c
 		lcall	X115b
+		; Least significant bit of command byte indicates reference mode
 		jnb		command_byte_0,dma_dac2_no_reference
+		; Trigger early DMA request to get reference byte
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0e4b:	movx	a,@r0
 		jnb		acc.6,X0e4b
 		mov		r0,#1fh
+		; Store it to the DAC and to r2
 		movx	a,@r0
 		mov		r2,a
 		mov		r0,#19h
 		movx	@r0,a
+		; Initialize ADPCM accumulator to 1.
 		mov		r5,#1
+		; Set up remaining samples per byte to 1.
 		mov		r3,#1
 		ljmp	X0e75
 
 dma_dac2_no_reference:
+		; No reference value, so we trigger DMA to get first
+		; actual sample data byte
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0e63:	movx	a,@r0
 		jnb		acc.6,X0e63
 		mov		r0,#1fh
+		; Store it in current sample byte (r6)
 		movx	a,@r0
 		mov		r6,a
+		; Depending on 2.6-bit or 4-bit mode, we have a differing number of
+		; samples to process in the incoming data byte.
 		jnb		command_byte_1,dac_no_ref_adpcm4
 		mov		r3,#3
 		ljmp	X0e75
@@ -2456,7 +2505,7 @@ cmd_spk_stat:
 		jb		pin_mute_en,X0ecf
 		clr		a
 		ljmp	X0ed1
-;
+
 X0ecf:	mov		a,#0ffh
 X0ed1:	; Wait for mailbox to empty out
 		jb		pin_dav_pc,X0ed1
@@ -2660,7 +2709,7 @@ table_ident_cmds:
 ; 10h: command E5, E6, E7, E9, EA, EB, EC, ED, EE, EF
 ; ------------------------------
 cmd_e_none:
-	ljmp	cmdg_e_exit
+		ljmp	cmdg_e_exit
 
 ; ------------------------------
 ; 13h: Command E0: Invert Bits
@@ -2723,16 +2772,16 @@ cmd_dsp_version:
 		mov		dptr,#dsp_version
 		clr		a
 		movc	a,@a+dptr
-X102a:	; Transmit major version number
-		jb		pin_dav_pc,X102a
+		; Transmit major version number
+X102a:	jb		pin_dav_pc,X102a
 		mov		r0,#0
 		nop	
 		nop	
 		movx	@r0,a
 		mov		a,#1
 		movc	a,@a+dptr
-X1035:	; Transmit minor version number
-		jb		pin_dav_pc,X1035
+		; Transmit minor version number
+X1035:	jb		pin_dav_pc,X1035
 		mov		r0,#0
 		nop	
 		nop	
@@ -3046,12 +3095,13 @@ adpcm_2_6_output:
 		mov		a,r2
 		mov		r0,#19h
 		movx	@r0,a
-		ret	
+		ret
 
 ; ------------------------------
 ; ?
 ; ------------------------------
-X114c:	push	acc
+X114c:
+		push	acc
 		mov		r0,#4
 		movx	a,@r0
 		anl		a,#0f0h
@@ -3064,7 +3114,8 @@ X114c:	push	acc
 ; ------------------------------
 ; ?
 ; ------------------------------
-X115b:	mov		r0,#0eh
+X115b:
+		mov		r0,#0eh
 		mov		a,#7
 		movx	@r0,a
 		mov		a,#4
@@ -3096,7 +3147,8 @@ dsp_output_data:
 ; ------------------------------
 ; ?
 ; ------------------------------
-X1176:	mov		r0,#0eh
+X1176:
+		mov		r0,#0eh
 		mov		a,#7
 		movx	@r0,a
 		mov		a,#6
@@ -3106,7 +3158,8 @@ X1176:	mov		r0,#0eh
 ; ------------------------------
 ; ?
 ; ------------------------------
-X117f:	mov		r0,#16h
+X117f:
+		mov		r0,#16h
 		mov		a,#7
 		movx	@r0,a
 		mov		a,#6
@@ -3116,7 +3169,8 @@ X117f:	mov		r0,#16h
 ; ------------------------------
 ; ?
 ; ------------------------------
-X1188:	mov		r0,#0eh
+X1188:
+		mov		r0,#0eh
 		mov		a,#3
 		movx	@r0,a
 		mov		a,#2
@@ -3126,7 +3180,8 @@ X1188:	mov		r0,#0eh
 ; ------------------------------
 ; ?
 ; ------------------------------
-X1191:	mov		r0,#16h
+X1191:
+		mov		r0,#16h
 		mov		a,#3
 		movx	@r0,a
 		mov		a,#2
@@ -3136,7 +3191,8 @@ X1191:	mov		r0,#16h
 ; ------------------------------
 ; Unimplemented CSP Diagnostics Routine
 ; ------------------------------
-X119a:	mov		a,#0
+X119a:
+		mov		a,#0
 		mov		r0,#80h
 		movx	@r0,a
 		mov		r0,#81h
@@ -3169,7 +3225,7 @@ X11d0:	dec		len_left_lo
 		inc		dptr
 		sjmp	X11b5
 
-X11d5:	ret	
+X11d5:	ret
 
 ; ------------------------------
 ; CSP Chip Data?
