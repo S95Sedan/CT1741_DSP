@@ -10,11 +10,11 @@
 .EQU rb1r3, 0bh
 .EQU rb1r4, 0ch
 .EQU rb1r5, 0dh
-.EQU dma_blk_len_lo, 0eh		; x
-.EQU dma_blk_len_hi, 0fh		; x
+.EQU dma_blk_len_lo, 0eh
+.EQU dma_blk_len_hi, 0fh
 .EQU rb2r0, 10h
-.EQU length_low, 11h			; x
-.EQU length_high, 12h			; x
+.EQU length_low, 11h
+.EQU length_high, 12h
 .EQU rb2r3, 13h
 .EQU rb2r4, 14h
 .EQU rb2r5, 15h
@@ -23,26 +23,16 @@
 .EQU rb3r0, 18h
 .EQU rb3r1, 19h
 .EQU rb3r2,	1ah
-.EQU command_byte, 20h			; x
-.EQU len_left_lo, 21h			; x
-.EQU len_left_hi, 22h			; x
-.EQU status_register, 23h		; x
-.EQU dsp_dma_id0, 25h			; x
-.EQU dsp_dma_id1, 26h			; x
-.EQU vector_low, 29h			; x
-.EQU vector_high, 2bh			; x
-.EQU warmboot_magic1, 31h		; x
-.EQU warmboot_magic2, 32h		; x
-
-; ------------------------------
-; SFR Equates
-; ------------------------------
-.EQU pin_mute_en, 1ch			; x				23h.4
-.EQU cmd_avail, 20h				; x				24h.0
-.EQU dma_mode_on, 21h			; x				24h.1
-.EQU dma_8bit_mode, 22h			; x				24h.2
-.EQU dma_16bit_mode, 24h		; x				24h.4
-.EQU midi_timestamp, 25h		; x				24h.5
+.EQU command_byte, 20h
+.EQU len_left_lo, 21h
+.EQU len_left_hi, 22h
+.EQU status_register, 23h
+.EQU dsp_dma_id0, 25h
+.EQU dsp_dma_id1, 26h
+.EQU vector_low, 29h
+.EQU vector_high, 2bh
+.EQU warmboot_magic1, 31h
+.EQU warmboot_magic2, 32h
 
 ; ------------------------------
 ; SFR bit Equates
@@ -50,11 +40,12 @@
 .EQU csp_pin_1, 80h
 .EQU csp_pin_2, 81h
 .EQU csp_pin_3, 82h
-.EQU csp_pin_4, 83h						
-.EQU pin_dav_pc, 90h			; x				p1.0
-.EQU pin_dav_dsp, 91h			; x				p1.1
-.EQU pin_dsp_busy, 92h			; x				p1.2
-.EQU pin_drequest, 95h			; x				p1.5
+.EQU csp_pin_4, 83h
+.EQU pin_dav_pc, 90h
+.EQU pin_dav_dsp, 91h
+.EQU pin_dsp_busy, 92h
+.EQU pin_drequest, 95h
+.EQU pin_dma_emable1, 78h
 
 ; ------------------------------
 ; Memory bit Equates
@@ -63,6 +54,12 @@
 .EQU command_byte_1, 1
 .EQU command_byte_2, 2
 .EQU command_byte_3, 3
+.EQU pin_mute_en, 1ch
+.EQU cmd_avail, 20h
+.EQU dma_mode_on, 21h
+.EQU dma_8bit_mode, 22h
+.EQU dma_16bit_mode, 24h
+.EQU midi_timestamp, 25h
 ;
 
 		.org	0
@@ -132,7 +129,7 @@ int0_none_handler:
 ; 8bit/16-bit DMA Initialization?
 ; ------------------------------
 int1_handler:
-		clr	pin_dsp_busy
+		clr		pin_dsp_busy
 		push	acc
 		push	dpl
 		push	dph
@@ -141,8 +138,8 @@ int1_handler:
 		movx	a,@r0
 		jnb		acc.0,X0065
 		lcall	vector_dma8_playback
-X0065:
-		mov		r0,#6
+		
+X0065:	mov		r0,#6
 		movx	a,@r0
 		jnb		acc.1,X006e
 		lcall	vector_dma16_playback
@@ -162,11 +159,10 @@ timer0_handler:
 		mov		th0,rb3r2
 		ljmp	X008a
 
-X0086:
-		clr		et0
+X0086:	clr		et0
 		clr		tr0
-X008a:
-		clr		p1.7
+		
+X008a:	clr		p1.7
 		setb	p1.7
 		reti	
 
@@ -220,7 +216,7 @@ X00bd:	mov		r0,#8
 		jnb		2fh.1,X00d7
 		lcall	X0a3e
 X00d7:	mov		r0,#6
-		setb	2fh.0
+		setb	pin_dma_emable1
 		mov		warmboot_magic1,#0
 		mov		warmboot_magic2,#0
 		jnb		23h.1,X00ec
@@ -288,7 +284,7 @@ X0137:	mov		r0,#10h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		jnb		2fh.0,X0150
+		jnb		pin_dma_emable1,X0150
 		lcall	X0a3e
 X0150:	mov		r0,#6
 		setb	2fh.1
@@ -362,7 +358,7 @@ vector_adpcm2_byte_available:
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		setb	2fh.0
+		setb	pin_dma_emable1
 		jnb		2fh.1,X01bf
 		lcall	X0a3e
 X01bf:	ljmp	vector_dma_dac_adpcm2_end
@@ -488,7 +484,7 @@ vector_adpcm4_byte_available:
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		setb	2fh.0
+		setb	pin_dma_emable1
 		jnb		2fh.1,X0268
 		lcall	X0a3e
 X0268:	ljmp	vector_dma_dac_adpcm4_end
@@ -694,7 +690,7 @@ X038d:	; Check to see if we have any remaining samples to play.
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		setb	2fh.0
+		setb	pin_dma_emable1
 		jnb		2fh.1,vector_dac_silence_end
 		lcall	X0a3e
 		ljmp	vector_dac_silence_end
@@ -742,7 +738,7 @@ start:	; We are busy right now (this bit can be read by the host PC in the
 		setb	pin_dsp_busy
 		clr		ea
 		setb	p1.7
-		setb	2fh.0
+		setb	pin_dma_emable1
 		setb	2fh.1
 		clr		p1.4
 		clr		p2.6
@@ -822,7 +818,7 @@ warm_boot:
 		mov		rb1r3,#0
 		mov		2ch,#0
 		mov		2dh,#0
-		mov		2bh,#0
+		mov		vector_high,#0
 		mov		24h,#0
 		clr		p2.5
 		setb	p2.4
@@ -964,7 +960,7 @@ X051a:	jnb		dma_8bit_mode,X0535
 		lcall	dsp_input_data
 		mov		length_high,a
 		setb	dma_mode_on
-		clr		2fh.0
+		clr		pin_dma_emable1
 		setb	ex1
 		ljmp	X05ab
 
@@ -1012,7 +1008,7 @@ X056e:	mov		r0,#4
 		movx	@r0,a
 		setb	2fh.4
 		setb	ex1
-		clr		2fh.0
+		clr		pin_dma_emable1
 		clr		ea
 		mov		r0,#8
 		mov		a,#4
@@ -1190,25 +1186,25 @@ cmd_04:
 ; 55h: command 06
 ; ------------------------------
 cmd_06:
-		inc		2bh
+		inc		vector_high
 		ljmp	X06ef
 
 ; ------------------------------
 ; 5ah: command 07
 ; ------------------------------
 cmd_07:
-		mov		a,2bh
+		mov		a,vector_high
 		cjne	a,#0,X06c3
 		ljmp	X06ef
 
-X06c3:	dec		2bh
+X06c3:	dec		vector_high
 		ljmp	X06ef
 
 ; ------------------------------
 ; 67h: command 0A
 ; ------------------------------
 cmd_0A:
-		mov		a,2bh
+		mov		a,vector_high
 		lcall	dsp_output_data
 
 ; ------------------------------
@@ -1321,7 +1317,7 @@ X0755:	dec		len_left_lo
 ; 0f8h: command 01
 ; ------------------------------
 cmd_01:
-		mov		a,2bh
+		mov		a,vector_high
 		cjne	a,#0,X06ef
 		lcall	dsp_output_data
 		mov		a,#0
@@ -2135,7 +2131,7 @@ dma_rec_autoinit:
 ; ------------------------------
 dma_rec_normal:	
 		lcall	X0a26
-		jb		2fh.0,X0cae
+		jb		pin_dma_emable1,X0cae
 X0c95:	jnb		pin_dav_dsp,X0c95
 		mov		r0,#0
 		nop	
@@ -2183,7 +2179,7 @@ X0cd4:	setb	23h.1
 		movx	@r0,a
 		anl		a,#0bfh
 		movx	@r0,a
-		clr		2fh.0
+		clr		pin_dma_emable1
 		setb	ex1
 		lcall	X1218
 		clr		ea
@@ -2278,7 +2274,7 @@ hs_dma_continuous:
 		movx	@r0,a
 		mov		warmboot_magic1,#34h
 		mov		warmboot_magic2,#12h
-		clr		2fh.0
+		clr		pin_dma_emable1
 		lcall	X11e5
 		setb	ex1
 		clr		ea
@@ -2366,7 +2362,7 @@ X0dfd:	jb		command_byte_1,dma_dac1_adpcm_use_2bit
 		setb	23h.0
 		mov		rb1r2,#4
 		lcall	X11e5
-		clr		2fh.0
+		clr		pin_dma_emable1
 		setb	ex1
 		lcall	X120f
 		clr		ea
@@ -2390,35 +2386,41 @@ X0e27:	ljmp	check_cmd
 ; Use 2-bit ADPCM compression
 ; ------------------------------
 dma_dac1_adpcm_use_2bit:
-		clr		2fh.0
+		clr		pin_dma_emable1
 		mov		rb1r3,#2
 		mov		rb1r2,#2
 		lcall	X11e5
 		lcall	X11f4
 		jb		command_byte_0,dma_dac1_reference
+		; Trigger host PC DMA
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0e41:	movx	a,@r0
 		jnb		acc.6,X0e41
 		mov		r0,#1fh
+		; Store it
 		movx	a,@r0
 		mov		r6,a
 		mov		r3,#4
 		ljmp	X0e63
 
 dma_dac1_reference:
+		; Trigger DMA to fetch value from host PC
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0e54:	movx	a,@r0
 		jnb		acc.6,X0e54
 		mov		r0,#1fh
+		; Write out value to DAC and store it as reference
 		movx	a,@r0
 		mov		r2,a
 		mov		r0,#19h
 		movx	@r0,a
+		; Set ADPCM accumulator to 1
 		mov		r5,#1
+		; Set remaining sample count to 1
 		mov		r3,#1
 X0e63:	setb	ex0
 		ljmp	check_cmd
@@ -2430,6 +2432,7 @@ dma_dac1_direct:
 		mov		a,#60h
 		mov		r0,#4
 		movx	@r0,a
+		; Wait for byte from host PC
 X0e6d:	jnb		pin_dav_dsp,X0e6d
 		mov		r0,#0
 		nop	
@@ -2482,7 +2485,7 @@ X0eaa:	clr		dma_mode_on
 		lcall	dsp_input_data
 		mov		len_left_hi,a
 		setb	pin_dsp_busy
-X0eb8:	clr		2fh.0
+X0eb8:	clr		pin_dma_emable1
 		jnb		command_byte_1,dma_dac2_adpcm_use_4bit
 		mov		rb1r3,#3
 		ljmp	dma_dac2_adpcm_use_2_6bit
@@ -2496,30 +2499,40 @@ dma_dac2_adpcm_use_2_6bit:
 		mov		rb1r2,#2
 		lcall	X11e5
 		lcall	X11f4
+		; Least significant bit of command byte indicates reference mode
 		jnb		command_byte_0,dma_dac2_no_reference
+		; Trigger early DMA request to get reference byte
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0ed8:	movx	a,@r0
 		jnb		acc.6,X0ed8
 		mov		r0,#1fh
+		; Store it to the DAC and to r2
 		movx	a,@r0
 		mov		r2,a
 		mov		r0,#19h
 		movx	@r0,a
+		; Initialize ADPCM accumulator to 1.
 		mov		r5,#1
+		; Set up remaining samples per byte to 1.
 		mov		r3,#1
 		ljmp	X0f02
 
-dma_dac2_no_reference:	
+dma_dac2_no_reference:
+		; No reference value, so we trigger DMA to get first
+		; actual sample data byte
 		setb	pin_drequest
 		clr		pin_drequest
 		mov		r0,#0fh
 X0ef0:	movx	a,@r0
 		jnb		acc.6,X0ef0
 		mov		r0,#1fh
+		; Store it in current sample byte (r6)
 		movx	a,@r0
 		mov		r6,a
+		; Depending on 2.6-bit or 4-bit mode, we have a differing number of
+		; samples to process in the incoming data byte.
 		jnb		command_byte_1,dac_no_ref_adpcm4
 		mov		r3,#3
 		ljmp	X0f02
@@ -2534,7 +2547,7 @@ X0f02:	setb	ex0
 ; ------------------------------
 cmdg_silence:
 		lcall	X0a26
-		clr		2fh.0
+		clr		pin_dma_emable1
 		lcall	dsp_input_data
 		mov		len_left_lo,a
 		lcall	dsp_input_data
@@ -2644,7 +2657,7 @@ cmd_exit_autoinit16:
 ; 5ch: Command D0: Pause 8-bit DMA mode
 ; ------------------------------
 cmd_dma8_pause:
-		setb	2fh.0
+		setb	pin_dma_emable1
 		mov		r0,#4
 		movx	a,@r0
 		jb		acc.2,X0f9c
@@ -2677,7 +2690,7 @@ cmd_dma16_pause:
 		orl		a,#2
 		movx	@r0,a
 		setb	2fh.1
-		jnb		2fh.0,X0fca
+		jnb		pin_dma_emable1,X0fca
 		clr		ex1
 		lcall	X0a3e
 X0fca:	ljmp	cmdg_d_exit
@@ -2687,7 +2700,7 @@ X0fca:	ljmp	cmdg_d_exit
 ; ------------------------------
 cmd_dma8_resume:
 		lcall	X0a26
-		clr		2fh.0
+		clr		pin_dma_emable1
 		mov		r0,#4
 		movx	a,@r0
 		jb		acc.2,X0fdd
@@ -2856,12 +2869,12 @@ cmd_dsp_dma_id:
 		mov		a,dsp_dma_id0
 		mov		r0,#1dh
 		movx	@r0,a
-		clr		2fh.0
+		clr		pin_dma_emable1
 		setb	pin_drequest
 		clr		pin_drequest
 X10b5:	jb		pin_dav_pc,X10b5
 		nop	
-		setb	2fh.0
+		setb	pin_dma_emable1
 		ljmp	cmdg_e_exit
 
 ; ------------------------------
@@ -3053,7 +3066,7 @@ adpcm_4_decode:
 		mul		ab
 		add		a,27h
 		; And store the result in 29h (delta)
-		mov		29h,a
+		mov		vector_low,a
 		; Grab original data byte again
 		mov		a,rb2r0
 		rlc		a
@@ -3061,7 +3074,7 @@ adpcm_4_decode:
 		jc		X116a
 		; MSB is zero, so value is positive. Add the delta to the
 		; current sample output value.
-		mov		a,29h
+		mov		a,vector_low
 		add		a,r2
 		jnc		X1171
 		; Saturate it to FFh if there was a carry.
@@ -3072,7 +3085,7 @@ X116a:	; Sign bit is negative
 		mov		a,r2
 		; Subtract the delta from the current sample output value.
 		clr		c
-		subb	a,29h
+		subb	a,vector_low
 		jnc		X1171
 		; Saturate it at 00h if there was a borrow.
 		clr		a
@@ -3145,7 +3158,7 @@ X11a4:	; Store back to current data byte (so we can grab the next one next
 		; delta = bits * ADPCM accumulator + (ADPCM accumulator / 2)
 		add		a,27h
 		; Store the result in 29h (delta)
-		mov		29h,a
+		mov		vector_low,a
 		; Get the original version of our incoming data byte back
 		mov		a,rb2r0
 		rlc		a
@@ -3153,7 +3166,7 @@ X11a4:	; Store back to current data byte (so we can grab the next one next
 		jc		X11bf
 		; Positive, so get our result again and add it to the current output
 		; sample
-		mov		a,29h
+		mov		a,vector_low
 		add		a,r2
 		jnc		X11c6
 		; Saturate it at FFh if there was a carry.
@@ -3163,7 +3176,7 @@ X11a4:	; Store back to current data byte (so we can grab the next one next
 X11bf:	; Sign bit is negative so we subtract it from our current output sample
 		mov		a,r2
 		clr		c
-		subb	a,29h
+		subb	a,vector_low
 		jnc		X11c6
 		; Saturate it at 00h if there was a borrow.
 		clr		a
