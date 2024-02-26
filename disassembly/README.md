@@ -1,5 +1,8 @@
 ## Firmware Disassembly Files:
 
+For use with Creative 4.04 Firmware:<br>
+```v404-8k_49fc38693.ctl```
+
 For use with Creative 4.05 Firmware:<br>
 ```v405-8k_e51aff23.ctl```
 
