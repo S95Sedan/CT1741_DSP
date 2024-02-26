@@ -6,11 +6,11 @@ This repository contains the firmware dumps (encrypted/decrypted), assembly/disa
   Which can be found: [Here](https://github.com/S95Sedan/CT1747_DSP/tree/main/firmware)<br>
   Every cards original PLCC44 can be replaced with this firmware and burned onto a 80C52 compatible chip.<br>
   <br>
-- The assembly files uploaded are for versions 4.05, 4.13 and 4.16 which return an exact match compared to the original. Included aswell a patched version for 4.13 which has several bugfixes.<br>
+- The assembly files uploaded are for versions 4.04, 4.05, 4.13 and 4.16 which return an exact match compared to the original. Included aswell a patched version for 4.13 which has several bugfixes.<br>
   All of them can be found [Here](https://github.com/S95Sedan/CT1747_DSP/tree/main/assembly)<br>
   They can be assembled with AS31, where the original one returns an exact match as like how it was on the card<br>
   <br>
-- The disassembly mappings uploaded are for versions 4.05, 4.13 and 4.16 with the same crc32.<br>
+- The disassembly mappings uploaded are for versions 4.04, 4.05, 4.13 and 4.16 with the same crc32.<br>
   Both can be found [Here](https://github.com/S95Sedan/CT1747_DSP/tree/main/disassembly)<br>
   They can be disassembled with D52 to get a rough output of what the assembly files would look like.<br>
 <br>
