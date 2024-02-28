@@ -17,7 +17,7 @@ Patched Creative 4.13 Firmware:<br>
 - Fixed ADPCM decoding typo
 ---
 ## Compiling:
-Both files can be compiled using AS31 found [Here](https://www.pjrc.com/tech/8051/tools/as31-doc.html)
+All of the files can be compiled using AS31 found [Here](https://www.pjrc.com/tech/8051/tools/as31-doc.html)
 
 
 ---
