@@ -14,7 +14,7 @@ Original Creative 4.16 Firmware:<br>
 ###### (Files should be properly formatted when loaded in nodepad++)<br>
 
 Patched Creative 4.13 Firmware:<br>
-```_v413-8k_f13a2e5e_patch5.asm:```
+```v413-8k_b34a9a0e_patch5.asm:```
 - Fixed hanging note bug
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
