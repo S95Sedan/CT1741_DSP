@@ -881,9 +881,9 @@ gen_sine_loop:
 
 sine_table:
 		.db	7fh,73h,67h,5bh,4fh,44h,39h,2fh
-		.db	dsp_dma_id1,1dh,16h,0fh,0ah,6,3,1
+		.db	26h,1dh,16h,0fh,0ah,6,3,1
 		.db	1,1,3,6,0ah,0fh,16h,1dh
-		.db	dsp_dma_id1,2fh,39h,44h,4fh,5bh,67h,73h
+		.db	26h,2fh,39h,44h,4fh,5bh,67h,73h
 		.db	80h,8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h
 		.db	0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh
 		.db	0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h
