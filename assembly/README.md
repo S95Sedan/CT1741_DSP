@@ -18,6 +18,14 @@ Patched Creative 4.13 Firmware:<br>
 - Fixed hanging note bug
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
+
+```v416-6k_32505fc2_patch1.asm:```
+- PSW fix (location: vector_dma_dac_adpcm, dac_silence)
+- ljmp X006e (location: vector_dma_dac_adpcm, dac_silence, vector_op5)
+- setb it1 (location: start)
+- Version 4.17 (Updated to a custom firmware)
+- Removed X-Bus registers (where possible).
+- Removed unused data at the end.
 ---
 ## Compiling:
 All of the files can be compiled using AS31 found [Here](https://www.pjrc.com/tech/8051/tools/as31-doc.html)
