@@ -36,8 +36,8 @@ Patched Creative 4.13 Firmwares:<br>
 Custom Creative 4.16 Firmwares:<br>
 ```v416-6k_32505fc2_patch1.bin```
 - Fixed hanging note bug
-- PSW fix 			(location: vector_dma_dac_adpcm, dac_silence)
-- ljmp X006e 		(location: vector_dma_dac_adpcm, dac_silence, vector_op5)
-- setb it1			(location: start)
-- Version 4.17 		(Updated to a custom firmware)
-- Removed unused data at the end.
+- Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
+- Improved jumps in interrupt handlers
+- Fixed 'setb it1' in 'start' routine
+- Updated to custom firmware version 4.17
+- Removed unused data at the end
