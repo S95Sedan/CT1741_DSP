@@ -37,7 +37,9 @@ Custom Creative 4.16 Firmwares:<br>
 ```v416-6k_32505fc2_patch1.bin```
 - Fixed hanging note bug
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
-- Improved jumps in interrupt handlers
+- Fixed ADPCM decoding typo
+- Fixed Code Jumps (vector_dma_dac_adpcm, dac_silence, vector_op5)
 - Fixed 'setb it1' in 'start' routine
-- Updated to custom firmware version 4.17
+- Removed X-Bus registers (where it wouldnt break things)
 - Removed unused data at the end
+- Updated displayed version to 4.17
