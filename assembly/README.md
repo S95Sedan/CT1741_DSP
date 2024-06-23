@@ -20,8 +20,9 @@ Patched Creative 4.13 Firmware:<br>
 - Fixed ADPCM decoding typo
 
 ```v416-6k_32505fc2_patch1.asm:```
-- Fixed hanging note bug
+- Fixed hanging note bug (fixed by default in 4.16)
 - Fixed PSW bug (vector_dma_dac_adpcm, dac_silence)
+- Fixed ADPCM decoding typo (fixed by default in 4.16)
 - Fixed Code Jumps (vector_dma_dac_adpcm, dac_silence, vector_op5)
 - Fixed 'setb it1' in 'start' routine
 - Removed X-Bus registers (where possible)
