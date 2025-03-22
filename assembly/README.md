@@ -33,9 +33,9 @@ Custom Creative 4.17 Firmwares:<br>
 - Removed X-Bus registers (where it wouldnt break things)
 - Removed unused data at the end
 - Updated to a custom firmware - Version 4.17
-
-  Todo (If the hardware allows it):
-- Single-Cycle DMA Clicking
+<br>
+  Todo (If the hardware allows it):<br>
+- Single-Cycle DMA Clicking<br>
 - MPU-401 Slowdown
 
 ---
