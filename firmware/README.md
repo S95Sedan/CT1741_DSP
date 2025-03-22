@@ -33,13 +33,13 @@ Patched Creative 4.13 Firmwares:<br>
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
 
-Custom Creative 4.16 Firmwares:<br>
-```v416-6k_32505fc2_patch1.bin```
+Custom Creative 4.17 Firmwares:<br>
+```v417-8k_35cb9fe9_1.0.bin```
 - Fixed hanging note bug
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
-- Fixed Code Jumps (vector_dma_dac_adpcm, dac_silence, vector_op5)
+- Removed Code Jumps (vector_dma_dac_adpcm*, dac_silence, vector_op5)(Needed for duke2 compatibility)
 - Fixed 'setb it1' in 'start' routine
 - Removed X-Bus registers (where it wouldnt break things)
 - Removed unused data at the end
-- Updated displayed version to 4.17
+- Updated to a custom firmware - Version 4.17
