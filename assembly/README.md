@@ -34,6 +34,10 @@ Custom Creative 4.17 Firmwares:<br>
 - Removed unused data at the end
 - Updated to a custom firmware - Version 4.17
 
+  Todo (If the hardware allows it):
+- Single-Cycle DMA Clicking
+- MPU-401 Slowdown
+
 ---
 ## Compiling:
 All of the files can be compiled using AS31 found [Here](https://www.pjrc.com/tech/8051/tools/as31-doc.html)
