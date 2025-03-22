@@ -33,6 +33,8 @@ Patched Creative 4.13 Firmwares:<br>
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
 
+---
+
 Custom Creative 4.17 Firmwares:<br>
 ```v417-8k_35cb9fe9_1.0.bin```
 - Fixed hanging note bug
