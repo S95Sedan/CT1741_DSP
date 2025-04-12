@@ -1,5 +1,5 @@
 ;=================================================================================
-; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.05
+; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.16
 ;=================================================================================
 
 ;---------------------------------- Command Bytes --------------------------------
@@ -49,11 +49,8 @@
 .EQU pin_timer0_toggle,			97h		; p1.7		Timer 0 Pulse Toggle
 
 ;--- Port 2 ---
-.EQU group_4_dma8_pause,		0a1h	; p2.1		8-bit DMA channel 1 paused
-.EQU group_4_dma16_pause,		0a2h	; p2.2		16-bit DMA channel 1 paused
-.EQU dma_safety_override_en,	0a3h	; p2.3		DMA timing safety override
-.EQU dma16_ch1_enable,			0a4h	; p2.4		Set during warm boot
-.EQU dma8_ch1_enable,			0a5h	; p2.5		DMA timing margin alert (CT1745?)
+.EQU pin_warmboot_flag,			0a4h	; p2.4		Set during warm boot
+.EQU pin_dma_timing_fault,		0a5h	; p2.5		DMA timing margin alert (CT1745?)
 .EQU pin_periph_dis,			0a6h	; p2.6		Disable external peripherals
 .EQU pin_midi_pwr,				0a7h	; p2.7		MIDI Interface Enable
 
@@ -103,6 +100,11 @@
 .EQU midi_timestamp_en,			25h		; 24h.5		MIDI timestamp counter enable
 
 ;--- Extended Control Register (2fh) ---
+.EQU dma8_ch1_enable,			78h		; 2fh.0		DMA8 Channel (1=Enable, 0=Disable)
+.EQU dma16_ch1_enable,			79h		; 2fh.1		DMA16 Channel (1=Enable, 0=Disable)
+.EQU group_4_dma16_pause,		7ah		; 2fh.2		16-bit DMA channel 1 paused
+.EQU group_4_dma8_pause,		7bh		; 2fh.3		8-bit DMA channel 1 paused
+.EQU dma_safety_override_en,	7ch		; 2fh.4		DMA timing safety override
 .EQU diagnostic_flag,			7dh		; 2fh.5		Diagnostic flag (challenge/resp)
 
 .EQU acc_dma8_start_pending,	0e0h	; acc.0		8-bit DMA start pending
@@ -226,7 +228,7 @@ midi_timestamp_int:
 X0098:	mov		tl0,#2fh
 		mov		th0,#0f8h
 		reti
-
+		
 ;------------------------------- 8-bit DMA Transfer Controller -------------------
 ; Manages 8-bit DMA data transfers including auto-init/single-cycle modes
 ; Handles register setup, buffer underflow checks, and CSP control signaling
@@ -261,8 +263,9 @@ X00bd:	mov		r0,#8
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
+		jnb		dma16_ch1_enable,X00d7
 		lcall	X0a3e
-		mov		r0,#6
+X00d7:	mov		r0,#6
 		setb	dma8_ch1_enable
 		mov		warmboot_magic1,#0
 		mov		warmboot_magic2,#0
@@ -332,8 +335,9 @@ X0137:	mov		r0,#10h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
+		jnb		dma8_ch1_enable,X0150
 		lcall	X0a3e
-		mov		r0,#6
+X0150:	mov		r0,#6
 		setb	dma16_ch1_enable
 		jnb		dma16_autoreinit_pause,X015f
 		lcall	dma16_start
@@ -381,7 +385,7 @@ vector_adpcm2_byte_available:
 		dec		r3
 		cjne	r3,#0,vector_dma_dac_adpcm2_shiftin
 		clr		a
-		cjne	a,rem_xfer_len_lo,vector_adpcm2_get_data_lo
+		cjne	a,rem_xfer_len_lo,vector_adpcm2_get_data_lo 
 		cjne	a,rem_xfer_len_hi,vector_adpcm2_get_data_hi
 		jb		dma8_active,X0204
 		jb		dma8_mode,X01c5
@@ -397,8 +401,9 @@ vector_adpcm2_byte_available:
 		anl		a,#7fh
 		movx	@r0,a
 		setb	dma8_ch1_enable
+		jnb		dma16_ch1_enable,X01bf
 		lcall	X0a3e
-		ljmp	vector_dma_dac_adpcm2_end
+X01bf:	ljmp	vector_dma_dac_adpcm2_end
 
 vector_dma_dac_adpcm2_shiftin:
 		ljmp	vector_adpcm_2_decode
@@ -424,6 +429,24 @@ X01d1:	movx	a,@r0
 		movx	@r0,a
 		ljmp	vector_dma_dac_adpcm2_end
 
+vector_adpcm2_get_data_hi:
+		dec		rem_xfer_len_hi
+vector_adpcm2_get_data_lo:	
+		dec		rem_xfer_len_lo
+		mov		r3,#4
+		setb	pin_dma_req
+		clr		pin_dma_req
+		mov		r0,#0fh
+vector_adpcm2_wait_for_byte:
+		movx	a,@r0
+		jnb		acc_buffer_ready,vector_adpcm2_wait_for_byte
+		mov		r0,#1fh
+		movx	a,@r0
+		mov		r6,a
+vector_adpcm_2_decode:
+		lcall	adpcm_2_decode
+		ljmp	vector_dma_dac_adpcm2_end
+
 X0204:	clr		dma8_mode
 		clr		dma8_active
 		mov		rem_xfer_len_lo,dma_xfer_len_lo
@@ -445,23 +468,7 @@ X0214:	movx	a,@r0
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		ljmp	vector_dma_dac_adpcm2_end
 
-vector_adpcm2_get_data_hi:
-		dec		rem_xfer_len_hi
-vector_adpcm2_get_data_lo:
-		dec		rem_xfer_len_lo
-		mov		r3,#4
-		setb	pin_dma_req
-		clr		pin_dma_req
-		mov		r0,#0fh
-X0200:	movx	a,@r0
-		jnb		acc_buffer_ready,X0200
-		mov		r0,#1fh
-		movx	a,@r0
-		mov		r6,a
-vector_adpcm_2_decode:
-		lcall	adpcm_2_decode
 vector_dma_dac_adpcm2_end:
 		clr		pin_dsp_busy
 		pop		isr_temp_storage
@@ -499,8 +506,9 @@ vector_adpcm4_byte_available:
 		anl		a,#7fh
 		movx	@r0,a
 		setb	dma8_ch1_enable
+		jnb		dma16_ch1_enable,X0268
 		lcall	X0a3e
-		ljmp	vector_dma_dac_adpcm4_end
+X0268:	ljmp	vector_dma_dac_adpcm4_end
 
 vector_dma_dac_adpcm4_shiftin:
 		ljmp	vector_adpcm_4_decode
@@ -512,29 +520,6 @@ X026e:	mov		rem_xfer_len_lo,dma_block_len_lo
 		mov		r0,#0fh
 X027a:	movx	a,@r0
 		jnb		acc_buffer_ready,X027a
-		mov		r0,#1fh
-		movx	a,@r0
-		mov		r6,a
-		mov		r3,#2
-		mov		r0,#8
-		movx	a,@r0
-		anl		a,#3
-		movx	@r0,a
-		orl		a,#80h
-		movx	@r0,a
-		anl		a,#7fh
-		movx	@r0,a
-		ljmp	vector_dma_dac_adpcm4_end
-
-X02ad:	clr		dma8_mode
-		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
-		setb	pin_dma_req
-		clr		pin_dma_req
-		mov		r0,#0fh
-X02bd:	movx	a,@r0
-		jnb		acc_buffer_ready,X02bd
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -564,6 +549,29 @@ X029f:	movx	a,@r0
 		mov		r6,a
 vector_adpcm_4_decode:
 		lcall	adpcm_4_decode
+		ljmp	vector_dma_dac_adpcm4_end
+
+X02ad:	clr		dma8_mode
+		clr		dma8_active
+		mov		rem_xfer_len_lo,dma_xfer_len_lo
+		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		setb	pin_dma_req
+		clr		pin_dma_req
+		mov		r0,#0fh
+X02bd:	movx	a,@r0
+		jnb		acc_buffer_ready,X02bd
+		mov		r0,#1fh
+		movx	a,@r0
+		mov		r6,a
+		mov		r3,#2
+		mov		r0,#8
+		movx	a,@r0
+		anl		a,#3
+		movx	@r0,a
+		orl		a,#80h
+		movx	@r0,a
+		anl		a,#7fh
+		movx	@r0,a
 vector_dma_dac_adpcm4_end:
 		clr		pin_dsp_busy
 		pop		isr_temp_storage
@@ -599,11 +607,27 @@ X02e6:	dec		r3
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
+		jnb		dma16_ch1_enable,X030f
 		lcall	X0a3e
-		ljmp	vector_dma_dac_adpcm2_6_end
+X030f:	ljmp	vector_dma_dac_adpcm2_6_end
 
 vector_dma_dac_adpcm2_6_shiftin:
 		ljmp	vector_adpcm_2_6_decode
+
+X0315:	dec		rem_xfer_len_hi
+X0317:	dec		rem_xfer_len_lo
+		mov		r3,#3
+		setb	pin_dma_req
+		clr		pin_dma_req
+		mov		r0,#0fh
+X0321:	movx	a,@r0
+		jnb		acc_buffer_ready,X0321
+		mov		r0,#1fh
+		movx	a,@r0
+		mov		r6,a
+vector_adpcm_2_6_decode:
+		lcall	adpcm_2_6_decode
+		ljmp	vector_dma_dac_adpcm2_6_end
 
 X032f:	mov		rem_xfer_len_lo,dma_block_len_lo
 		mov		rem_xfer_len_hi,dma_block_len_hi
@@ -647,21 +671,6 @@ X0364:	movx	a,@r0
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-		ljmp	vector_dma_dac_adpcm2_6_end
-
-X0315:	dec		rem_xfer_len_hi
-X0317:	dec		rem_xfer_len_lo
-		mov		r3,#3
-		setb	pin_dma_req
-		clr		pin_dma_req
-		mov		r0,#0fh
-X0321:	movx	a,@r0
-		jnb		acc_buffer_ready,X0321
-		mov		r0,#1fh
-		movx	a,@r0
-		mov		r6,a
-vector_adpcm_2_6_decode:
-		lcall	adpcm_2_6_decode
 vector_dma_dac_adpcm2_6_end:
 		clr		pin_dsp_busy
 		pop		isr_temp_storage
@@ -693,6 +702,7 @@ vector_dac_silence_byte_available:
 		anl		a,#7fh
 		movx	@r0,a
 		setb	dma8_ch1_enable
+		jnb		dma16_ch1_enable,vector_dac_silence_end
 		lcall	X0a3e
 		ljmp	vector_dac_silence_end
 
@@ -745,8 +755,9 @@ start:
 		setb	dma16_ch1_enable
 		clr		pin_coldboot_done
 		clr		pin_periph_dis
-		mov		sp,#80h
+		mov		sp,#0c0h
 		clr		pin_dma_req
+		setb	pin_midi_pwr
 		mov		scon,#42h
 		mov		th1,#0fch
 		mov		tl1,#0fch
@@ -755,7 +766,9 @@ start:
 		setb	tr1
 		setb	ren
 		setb	it0
-		setb	it1
+		; Error, 4.16 uses 'clr it1' which is incorrect.
+		; Should be 'setb it1'
+		clr		it1
 		mov		a,#34h
 		cjne	a,warmboot_magic1,cold_boot
 		mov		a,#12h
@@ -780,6 +793,9 @@ cold_boot:
 		mov		r0,#9
 		mov		a,#0f8h
 		movx	@r0,a
+		mov		r0,#5				;
+		mov		a,#0c3h				; Added in 4.13
+		movx	@r0,a				;
 		mov		r0,#0eh
 		mov		a,#5
 		movx	@r0,a
@@ -794,6 +810,9 @@ cold_boot:
 		movx	@r0,a
 		mov		r0,#16h
 		mov		a,#4
+		movx	@r0,a				;
+		mov		r0,#18h				; Added in 4.16
+		mov		a,#0				;
 		movx	@r0,a
 		mov		r7,#0
 		mov		dsp_dma_id0,#0aah
@@ -810,12 +829,17 @@ cold_boot:
 ; - Maintains CSP enable states during firmware updates
 ;---------------------------------------------------------------------------------
 warm_boot:
+		mov		r0,#5
+		movx	a,@r0
+		orl		a,#3
+		movx	@r0,a
 		mov		adpcm_state_reg,#0
 		mov		dma8_config_temp,#0
 		mov		dma16_config_temp,#0
 		mov		vector_hi,#0
 		mov		auxiliary_reg,#0
-		setb	pin_midi_pwr
+		clr		pin_dma_timing_fault
+		setb	pin_warmboot_flag
 		clr		dma_safety_override_en
 		clr		group_4_dma8_pause
 		clr		group_4_dma16_pause
@@ -867,9 +891,9 @@ X049d:	clr		ea
 ;---------------------------------------------------------------------------------
 dispatch_cmd:
 		setb	ea
+		clr		pin_dsp_busy
 		mov		dptr,#table_major_cmds
 		movc	a,@a+dptr
-		clr		pin_dsp_busy
 		jmp		@a+dptr
 
 		sjmp	check_cmd
@@ -929,12 +953,6 @@ cmd_dma8:
 		jnb		command_byte_3,X050c
 		orl		a,#5
 		mov		dma_control_temp,a
-		mov		r0,#8
-		movx	a,@r0
-		orl		a,#40h
-		movx	@r0,a
-		anl		a,#0bfh
-		movx	@r0,a
 		setb	dma16_start_pending
 		ljmp	X0512
 
@@ -1031,12 +1049,6 @@ cmd_dma16:
 		jnb		command_byte_3,X05c2
 		orl		a,#4
 		mov		dma_control_temp,a
-		mov		r0,#10h
-		movx	a,@r0
-		orl		a,#40h
-		movx	@r0,a
-		anl		a,#0bfh
-		movx	@r0,a
 		setb	dma16_autoreinit_pause
 		ljmp	X05c8
 
@@ -1086,13 +1098,6 @@ X061d:	setb	acc_addr_hi_or_mode
 		clr		acc_addr_hi_or_mode
 X0624:	mov		r0,#4
 		movx	@r0,a
-		clr		ea
-		mov		r0,#10h
-		mov		a,#1
-		movx	@r0,a
-		mov		a,#0
-		movx	@r0,a
-		setb	ea
 		lcall	dsp_input_data
 		mov		dma_len_temp_lo,a
 		mov		r0,#13h
@@ -1457,13 +1462,13 @@ cmdg_setup:
 ;   0   |  40h    | cmd_set_time_constant		(6fh)
 ;   1   |  41h    | cmd_set_output_samplerate	(82h)
 ;   2   |  42h    | cmd_set_input_samplerate	(82h)
-;   3   |  43h    | cmd_4_none					(24h)
+;   3   |  43h    | cmd_set_dma_transfer_count	(9fh)
 ;   4   |  44h    | cmd_pause_dma_8bit			(10h)
 ;   5   |  45h    | cmd_continue_dma_8bit		(15h)
 ;   6   |  46h    | cmd_pause_dma_16bit			(1ah)
 ;   7   |  47h    | cmd_continue_dma_16bit		(1fh)
 ; ---------------------------------------------------
-;   8   |  48h    | cmd_set_dma_block_size		(9fh)
+;   8   |  48h    | cmd_set_dma_block_size		(c0h)
 ;   9   |  49h    | cmd_4_none					(24h)
 ;  10   |  4Ah    | cmd_4_none					(24h)
 ;  11   |  4Bh    | cmd_4_none					(24h)
@@ -1473,8 +1478,8 @@ cmdg_setup:
 ;  15   |  4Fh    | cmd_control_timer			(2ch)
 ; ----------------------------------------------------
 table_setup_cmds:
-		.db	6fh,82h,82h,24h,10h,15h,1ah,1fh
-		.db	9fh,24h,24h,24h,51h,60h,27h,2ch
+		.db	6fh,82h,82h,9fh,10h,15h,1ah,1fh
+		.db	0c0h,24h,24h,24h,51h,60h,27h,2ch
 
 ;============================= DMA FLOW CONTROL ==================================
 ;------------------------------- Pause/Resume 8-bit DMA -------------------------
@@ -1510,7 +1515,7 @@ cmd_continue_dma_16bit:
 		ljmp	cmdg_4_exit
 
 ;---------------------------------------------------------------------------------
-; [43h, 49h, 4Ah, 4Bh] Invalid Commands
+; [49h, 4Ah, 4Bh] Invalid Commands
 ;---------------------------------------------------------------------------------
 cmd_4_none:
 		ljmp	wait_for_cmd
@@ -1601,8 +1606,8 @@ X085f:	lcall	convert_samplerate
 ; Input: Big-endian 16-bit rate (playback/record)
 ; Affects: dma_addr_lo/dma_addr_hi (active rate registers)
 ;---------------------------------------------------------------------------------
-cmd_set_input_samplerate:
 cmd_set_output_samplerate:
+cmd_set_input_samplerate:
 		jnb		pin_dsp_data_rdy,cmd_set_input_samplerate
 		mov		r0,#0
 		nop	
@@ -1617,6 +1622,32 @@ X0872:	jnb		pin_dsp_data_rdy,X0872
 		mov		dma_addr_lo,a
 		lcall	X09a7
 		lcall	X0a0e
+		ljmp	cmdg_4_exit
+
+;---------------------------------------------------------------------------------
+; [43h] Set DMA Transfer Count (Index 3)
+; Configures auto-init transfer length
+; Input: 16-bit transfer count
+; Affects: DMA reg 09h, dma_addr_lo/dma_addr_hi
+;---------------------------------------------------------------------------------
+cmd_set_dma_transfer_count:
+		jnb		pin_dsp_data_rdy,cmd_set_dma_transfer_count
+		mov		r0,#0
+		nop	
+		nop	
+		movx	a,@r0
+		mov		dma_addr_hi,a
+X088f:	jnb		pin_dsp_data_rdy,X088f
+		mov		r0,#0
+		nop	
+		nop	
+		movx	a,@r0
+		mov		dma_addr_lo,a
+		lcall	X09a7
+		mov		r0,#9
+		mov		37h,a
+		movx	@r0,a
+		clr		dma_timing_status
 		ljmp	cmdg_4_exit
 
 ;---------------------------------------------------------------------------------
@@ -1652,36 +1683,36 @@ convert_samplerate:
 ; Special values: 0FFh = 45.32kHz, 0EBh = Max Valid Input
 ;--------------------------------------------------------------------------------
 samplerate_table:	
-		.db	15h,16h,16h,16h,16h,16h,16h,16h
-		.db	16h,16h,16h,16h,17h,17h,17h,17h
-		.db	17h,17h,17h,17h,17h,17h,18h,18h
-		.db	18h,18h,18h,18h,18h,18h,18h,18h
-		.db	19h,19h,19h,19h,19h,19h,19h,19h
-		.db	1ah,1ah,1ah,1ah,1ah,1ah,1ah,1ah
-		.db	1bh,1bh,1bh,1bh,1bh,1bh,1bh,1bh
-		.db	1ch,1ch,1ch,1ch,1ch,1ch,1ch,1dh
-		.db	1dh,1dh,1dh,1dh,1dh,1eh,1eh,1eh
-		.db	1eh,1eh,1eh,1fh,1fh,1fh,1fh,1fh
-		.db	1fh,20h,20h,20h,20h,20h,21h,21h
-		.db	21h,21h,21h,22h,22h,22h,22h,22h
-		.db	23h,23h,23h,23h,24h,24h,24h,24h
-		.db	25h,25h,25h,25h,26h,26h,26h,26h
-		.db	27h,27h,27h,27h,28h,28h,28h,29h
-		.db	29h,29h,29h,2ah,2ah,2ah,2bh,2bh
-		.db	2bh,2ch,2ch,2ch,2dh,2dh,2eh,2eh
-		.db	2eh,2fh,2fh,30h,30h,30h,31h,31h
-		.db	32h,32h,33h,33h,34h,34h,35h,35h
-		.db	36h,36h,37h,37h,38h,38h,39h,39h
-		.db	3ah,3bh,3bh,3ch,3dh,3dh,3eh,3fh
-		.db	3fh,40h,41h,42h,42h,43h,44h,45h
-		.db	46h,47h,48h,49h,49h,4ah,4bh,4dh
-		.db	4eh,4fh,50h,51h,52h,53h,55h,56h
-		.db	57h,59h,5ah,5ch,5dh,5fh,60h,62h
-		.db	0c8h,66h,68h,6ah,6ch,6eh,70h,72h
-		.db	75h,77h,7ah,7ch,7fh,82h,85h,89h
-		.db	8ch,90h,93h,97h,9ch,0a0h,0a5h,0aah
-		.db	0afh,0b5h,0bbh,0c1h,0c8h,0d0h,0d8h,0e0h
-		.db	0eah,0f4h,0ffh,0ffh
+	.db	15h,16h,16h,16h,16h,16h,16h,16h
+    .db	16h,16h,16h,16h,17h,17h,17h,17h
+    .db	17h,17h,17h,17h,17h,17h,18h,18h
+    .db	18h,18h,18h,18h,18h,18h,18h,18h
+    .db	19h,19h,19h,19h,19h,19h,19h,19h
+    .db	1ah,1ah,1ah,1ah,1ah,1ah,1ah,1ah
+    .db	1bh,1bh,1bh,1bh,1bh,1bh,1bh,1bh
+    .db	1ch,1ch,1ch,1ch,1ch,1ch,1ch,1dh
+    .db	1dh,1dh,1dh,1dh,1dh,1eh,1eh,1eh
+    .db	1eh,1eh,1eh,1fh,1fh,1fh,1fh,1fh
+    .db	1fh,20h,20h,20h,20h,20h,21h,21h
+    .db	21h,21h,21h,22h,22h,22h,22h,22h
+    .db	23h,23h,23h,23h,24h,24h,24h,24h
+    .db	25h,25h,25h,25h,26h,26h,26h,26h
+    .db	27h,27h,27h,27h,28h,28h,28h,29h
+    .db	29h,29h,29h,2ah,2ah,2ah,2bh,2bh
+    .db	2bh,2ch,2ch,2dh,2dh,2dh,2eh,2eh
+    .db	2eh,2fh,2fh,30h,30h,30h,31h,31h
+    .db	32h,32h,33h,33h,34h,34h,35h,35h
+    .db	36h,36h,37h,37h,38h,38h,39h,39h
+    .db	3ah,3bh,3bh,3ch,3dh,3dh,3eh,3fh
+    .db	3fh,40h,41h,42h,42h,43h,44h,45h
+    .db	46h,47h,48h,49h,49h,4ah,4bh,4dh
+    .db	4eh,4fh,50h,51h,52h,53h,55h,56h
+    .db	57h,59h,5ah,5ch,5dh,5fh,60h,62h
+    .db	64h,66h,68h,6ah,6ch,6eh,70h,72h
+    .db	75h,77h,7ah,7ch,7fh,82h,85h,89h
+    .db	8ch,90h,93h,97h,9ch,0a0h,0a5h,0aah
+    .db	0afh,0b5h,0bbh,0c1h,0c8h,0d0h,0d8h,0e0h
+    .db	0eah,0f4h,0ffh,0ffh
 
 ;------------------------------- Samplerate Calibration -------------------------
 ; Calculates DMA timing parameters from samplerate
@@ -1691,16 +1722,21 @@ samplerate_table:
 ; Operation: Performs (17h * samplerate) ÷ 256
 ;--------------------------------------------------------------------------------
 X09a7:
+		mov		r0,#18h
 		mov		a,dma_addr_hi
 		cjne	a,#0b1h,X09b1
-		mov		a,#0ffh
-		ljmp	X0a0d
+		ljmp	X09b3
 
 X09b1:	jc		X09ba
-		mov		a,#0ffh
+X09b3:	movx	a,@r0
+		setb	acc_dma8_start_pending 
+		movx	@r0,a 
 		ljmp	X0a0d
 
-X09ba:	mov		a,dma_addr_hi
+X09ba:	movx	a,@r0
+		clr		acc_dma8_start_pending
+		movx	@r0,a
+		mov		a,dma_addr_hi
 		clr		c
 		subb	a,#13h
 		jnc		X09ca
@@ -1720,7 +1756,6 @@ X09ca:	mov		a,#17h
 		mov		dma_timing_control,a
 		mov		a,timer0_counter
 		addc	a,#0
-		mov		a,timer0_counter
 		rrc		a
 		mov		timer0_counter,a
 		mov		a,dma_timing_control
@@ -1751,11 +1786,15 @@ X0a0d:	ret
 ; Programs DMA controller register 09h with calculated value
 ; Input: A = Value to program
 ; Affects: R0, 37h, dma_timing_status flag
-; Behavior: Uses dma16_ch1_enable to select DMA bank
+; Behavior: Uses pin_warmboot_flag to select DMA bank
 ;---------------------------------------------------------------------------------
-X0a0e:
+X0a0e:	
 		mov		r0,#9
-		mov		37h,a
+		jb		pin_warmboot_flag,X0a17
+		movx	@r0,a
+		ljmp	X0a25
+
+X0a17:	mov		37h,a
 		cjne	a,#0f8h,X0a1c
 X0a1c:	jnc		X0a23
 		setb	dma_timing_status
@@ -1771,16 +1810,26 @@ X0a25:	ret
 ;   - Bypassed in Auto-Initialized Modes
 ;---------------------------------------------------------------------------------
 X0a26:
+		jnb		pin_warmboot_flag,X0a3d
 		mov		r0,#9
 		mov		a,37h
-		movx	@r0,a
-		ret	
+		cjne	a,#5ah,X0a33
+		ljmp	X0a35
+
+X0a33:	jnc		X0a3a
+X0a35:	setb	pin_dma_timing_fault
+		ljmp	X0a3c
+
+X0a3a:	clr		pin_dma_timing_fault
+X0a3c:	movx	@r0,a
+X0a3d:	ret	
 
 ;---------------------------------------------------------------------------------
 ; X0a3e: Emergency rate limiter
 ; Applies safe value when dma_timing_status (unsafe flag) set
 ;---------------------------------------------------------------------------------
 X0a3e:
+		jnb		pin_warmboot_flag,X0a49
 		jnb		dma_timing_status,X0a49
 		mov		r0,#9
 		mov		a,#0f8h
@@ -1802,7 +1851,7 @@ cmdg_aux:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  F0h    | cmd_init_dma				(81h)
+;   0   |  F0h    | cmd_init_dma				(7eh)
 ;   1   |  F1h    | cmd_f_none					(41h)
 ;   2   |  F2h    | cmd_reset_control_dma8		(44h)
 ;   3   |  F3h    | cmd_reset_control_dma16		(53h)
@@ -1821,7 +1870,7 @@ cmdg_aux:
 ;  15   |  FFh    | cmd_f_none					(41h)
 ; ----------------------------------------------------
 table_aux_cmds:
-		.db	81h,41h,44h,53h,61h,41h,41h,41h
+		.db	7eh,41h,44h,53h,61h,41h,41h,41h
 		.db	6eh,10h,1bh,31h,39h,29h,41h,41h
 
 ;============================= MEMORY ACCESS COMMANDS ==============================
@@ -1866,6 +1915,7 @@ cmd_dsp_command_status:
 ;------------------------------- DSP Status Report ---------------------------------
 ; [FBh] Status Report (Group F Index: 11)
 ; Returns contents of DSP status register (23h).
+; Output: Value of 23h register (bitmask)
 ;-----------------------------------------------------------------------------------
 cmd_dsp_status:
 		mov		a,status_reg
@@ -1936,9 +1986,9 @@ cmd_F3:
 ; Output: 0A4h, 06Fh
 ;-----------------------------------------------------------------------------------
 cmd_F4:
-		mov		a,#7dh
+		mov		a,#0a4h
 		lcall	dsp_output_data
-		mov		a,#1bh
+		mov		a,#6fh
 		lcall	dsp_output_data
 		ljmp	cmdg_f_exit
 
@@ -1951,7 +2001,6 @@ cmd_F4:
 ; Affects: Port 0 or CSP diagnostic subsystem
 ;-----------------------------------------------------------------------------------
 cmd_mailbox_reset_or_diag:
-		jb		command_byte_2,X0a85
 		mov		a,#0
 		mov		r0,#0
 		nop	
@@ -1959,7 +2008,8 @@ cmd_mailbox_reset_or_diag:
 		movx	@r0,a
 		ljmp	cmdg_f_exit
 
-X0a85:	lcall	X1233
+		; Impossible call in 4.16									
+		lcall	X1233
 		ljmp	cmdg_f_exit
 
 ;============================= DMA INITIALIZATION COMMANDS =========================
@@ -2051,7 +2101,7 @@ skip_midi_timestamp_setup:
 		clr		ri
 		mov		r1,#40h
 		mov		r2,#40h
-		mov		r4,#40h
+		mov		r4,#80h
 		ljmp	midi_check_for_input_data
 
 ;------------------------------- MIDI Polling Loop ----------------------------------
@@ -2084,7 +2134,7 @@ midi_write_poll:
 		mov		sbuf,a
 midi_check_for_input_data:
 		jb		ri,midi_has_input_data
-		cjne	r4,#40h,midi_buffer_status_check
+		cjne	r4,#80h,midi_buffer_status_check
 		sjmp	midi_poll_loop
 
 midi_buffer_status_check:
@@ -2107,16 +2157,6 @@ midi_read_no_timestamp:
 		lcall	midi_buffer_write
 		clr		ri
 		sjmp	midi_poll_loop
-		
-		; Impossible to be called?
-		cjne	r4,#40h,X0b42
-		ljmp	midi_nowrap_readbuffer
-
-X0b42:	mov		@r1,a
-		inc		r1
-		dec		r4
-		cjne	r1,#80h,midi_flush_buffer_to_host
-		mov		r1,#40h
 
 ;------------------------------- Buffer Flush Routine ------------------------------
 midi_flush_buffer_to_host:
@@ -2125,7 +2165,7 @@ midi_flush_buffer_to_host:
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#80h,midi_nowrap_readbuffer
+		cjne	r2,#0c0h,midi_nowrap_readbuffer
 		mov		r2,#40h
 midi_nowrap_readbuffer:
 		mov		r0,#0
@@ -2153,7 +2193,7 @@ midi_store_read_data_to_buffer:
 		mov		@r1,a
 		inc		r1
 		dec		r4
-		cjne	r1,#80h,midi_ready_to_receive_more
+		cjne	r1,#0c0h,midi_ready_to_receive_more
 		mov		r1,#40h
 midi_ready_to_receive_more:
 		ret	
@@ -2180,7 +2220,7 @@ midi_uart_init:
 		clr		ri
 		mov		r1,#40h
 		mov		r2,#40h
-		mov		r4,#40h
+		mov		r4,#80h
 		mov		warmboot_magic1,#34h
 		mov		warmboot_magic2,#12h
 		ret	
@@ -2194,21 +2234,29 @@ midi_uart_init:
 ;   - Handles both interrupt-driven and polled I/O
 ;-----------------------------------------------------------------------------------
 midi_io_handler:
-		clr		pin_dsp_busy
+		mov		warmboot_magic1,#34h
+		mov		warmboot_magic2,#12h
+		mov		a,38h
+		cjne	a,#52h,X0bdc
+		mov		a,39h
+		cjne	a,#86h,X0bdc
+		ljmp	X0c2a
+
+X0bdc:	clr		pin_dsp_busy
 		jb		pin_dsp_data_rdy,X0c09
 		jnb		pin_midi_irq,X0bfe
 		jb		ri,X0c12
-		cjne	r4,#40h,midi_buffer_process
-X0bea:	jnb		ti,midi_io_handler
+		cjne	r4,#80h,midi_buffer_process
+X0bea:	jnb		ti,X0bdc
 		mov		r0,#2
 		movx	a,@r0
 		setb	pin_dsp_busy
-		jnb		acc_buffer_ready,midi_io_handler
+		jnb		acc_buffer_ready,X0bdc
 		mov		r0,#1
 		movx	a,@r0
 		clr		ti
 		mov		sbuf,a
-		sjmp	midi_io_handler
+		sjmp	X0bdc
 
 X0bfe:	mov		r0,#1
 		movx	a,@r0
@@ -2236,24 +2284,45 @@ X0c12:	mov		a,sbuf
 		clr		ri
 		sjmp	X0bea
 
-		cjne	r4,#40h,X0bd6
-		ljmp	X0c25
-
-X0bd6:	mov		@r1,a
-		inc		r1
-		dec		r4
-		cjne	r1,#80h,X0c1b
-		mov		r1,#40h
 X0c1b:	mov		a,r2
 		mov		r0,a
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#80h,X0c25
+		cjne	r2,#0c0h,X0c25
 		mov		r2,#40h
 X0c25:	mov		r0,#2
 		movx	@r0,a
 		sjmp	X0bea
+
+X0c2a:	clr		pin_dsp_busy
+		jb		pin_dsp_data_rdy,X0c61
+		jnb		pin_midi_irq,X0c56
+		jnb		diagnostic_flag,X0c38
+		jnb		ti,X0c2a
+X0c38:	mov		r0,#2
+		movx	a,@r0
+		setb	pin_dsp_busy
+		jnb		acc_addr_hi_or_mode,X0c2a
+		mov		r0,#2
+		movx	a,@r0
+		jnb		acc_buffer_ready,X0c2a
+		mov		r0,#1
+		movx	a,@r0
+		clr		ea
+		clr		pin_midi_pwr
+		mov		r0,#2
+		movx	@r0,a
+		setb	pin_midi_pwr
+		setb	ea
+		sjmp	X0c2a
+
+X0c56:	mov		r0,#1
+		movx	a,@r0
+		clr		midi_active
+		mov		warmboot_magic1,#0
+		mov		warmboot_magic2,#0
+X0c61:	ret	
 
 ;============================= RECORDING COMMANDS ==================================
 ;------------------------------- Group 2: Recording Control -----------------------
@@ -2278,6 +2347,13 @@ cmdg_rec:
 dma_rec_autoinit:
 		lcall	X0a26
 		setb	dma8_mode
+		clr		ea
+		mov		r0,#8
+		mov		a,#1
+		movx	@r0,a
+		mov		a,#0
+		movx	@r0,a
+		setb	ea
 		mov		a,dma_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
@@ -2488,6 +2564,13 @@ cmdg_dma_dac1:
 dma_dac1_autoinit:
 		lcall	X0a26
 		setb	dma8_mode
+		clr		ea
+		mov		r0,#8
+		mov		a,#1
+		movx	@r0,a
+		mov		a,#0
+		movx	@r0,a
+		setb	ea
 		mov		a,dma_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
@@ -2775,32 +2858,36 @@ cmdg_misc:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  D0h    | cmd_pause_dma8				(5ah)
-;   1   |  D1h    | cmd_speaker_on				(3ch)
-;   2   |  D2h    | cmd_d_none					(10h)
-;   3   |  D3h    | cmd_speaker_off				(41h)
-;   4   |  D4h    | cmd_resume_dma8				(9eh)
-;   5   |  D5h    | cmd_pause_dma16				(83h)
-;   6   |  D6h    | cmd_resume_dma16			(0e4h)
-;   7   |  D7h    | cmd_d_none					(10h)
+;   0   |  D0h    | cmd_pause_dma8				(5ch)
+;   1   |  D1h    | cmd_speaker_on				(48h)
+;   2   |  D2h    | cmd_clear_it1_flag			(13h)
+;   3   |  D3h    | cmd_speaker_off				(4Dh)
+;   4   |  D4h    | cmd_resume_dma8				(A0h)
+;   5   |  D5h    | cmd_pause_dma16				(8Bh)
+;   6   |  D6h    | cmd_resume_dma16			(ECh)
+;   7   |  D7h    | cmd_set_it1_flag			(16h)
 ; ---------------------------------------------------
-;   8   |  D8h    | cmd_speaker_status			(25h)
-;   9   |  D9h    | cmd_exit_autoinit_dma16		(4bh)
-;  10   |  DAh    | cmd_exit_autoinit_dma8		(46h)
+;   8   |  D8h    | cmd_speaker_status			(31h)
+;   9   |  D9h    | cmd_exit_autoinit_dma16		(57h)
+;  10   |  DAh    | cmd_exit_autoinit_dma8		(52h)
 ;  11   |  DBh    | cmd_d_none					(10h)
-;  12   |  DCh    | cmd_check_and_set_flag		(50h)
-;  13   |  DDh    | cmd_clear_and_exit			(55h)
-;  14   |  DEh    | cmd_set_ctrl_bits_0_1		(13h)
-;  15   |  DFh    | cmd_clear_ctrl_bit_1		(1ch)
+;  12   |  DCh    | cmd_check_and_set_flag		(19h)
+;  13   |  DDh    | cmd_clear_and_exit			(1Ch)
+;  14   |  DEh    | cmd_set_ctrl_bits_0_1		(1Fh)
+;  15   |  DFh    | cmd_clear_ctrl_bit_1		(28h)
 ; ----------------------------------------------------
 table_misc_cmds:
-		.db	5ah,3ch,10h,41h,9eh,83h,0e4h,10h
-		.db	25h,4bh,46h,10h,50h,55h,13h,1ch
+		.db	5ch,48h,13h,4dh,0a0h,8bh,0ech,16h
+		.db	31h,57h,52h,10h,19h,1ch,1fh,28h
 
 ;-----------------------------------------------------------------------------------
-; 10h: invalid command D2, D7, DB
+; 10h: invalid command DB
 ;-----------------------------------------------------------------------------------
 cmd_d_none:						ljmp	cmdg_d_exit
+vector_cmd_clear_it1_flag:		ljmp	cmd_clear_it1_flag
+vector_cmd_set_it1_flag:		ljmp	cmd_set_it1_flag
+vector_cmd_check_and_set_flag:	ljmp	cmd_check_and_set_flag
+vector_cmd_clear_and_exit:		ljmp	cmd_clear_and_exit
 
 ;============================= CONTROL REGISTER OPERATIONS =========================
 ;------------------------------- Set Control Bits 0-1 (DEh) ------------------------
@@ -2809,7 +2896,7 @@ cmd_d_none:						ljmp	cmdg_d_exit
 cmd_set_ctrl_bits_0_1:
 		mov		r0,#5
 		movx	a,@r0
-		setb	acc_dma8_start_pending
+		orl		a,#3
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
@@ -2819,7 +2906,7 @@ cmd_set_ctrl_bits_0_1:
 cmd_clear_ctrl_bit_1:
 		mov		r0,#5
 		movx	a,@r0
-		clr		acc_dma8_start_pending
+		clr		acc_dma16_start_pending
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
@@ -2878,27 +2965,6 @@ cmd_exit_autoinit_dma16:
 		clr		dma16_mode
 		ljmp	cmdg_d_exit
 
-;------------------------------- Clear and Exit (DDh) ------------------------------
-; Resets diagnostic flags and warm boot signatures
-; Affects:
-;   - Clears warm boot magic bytes (38h/39h)
-;   - Resets diagnostic flag diagnostic_flag
-;-----------------------------------------------------------------------------------
-cmd_clear_and_exit:
-		clr	pin_midi_pwr
-		ljmp	cmdg_d_exit
-
-;------------------------------- Check and Set Flag (DCh) --------------------------
-; Establishes host-DSP challenge/response protocol
-; Operation:
-;   1. Sets challenge bytes 38h=52h/39h=86h
-;   2. Waits for host to send 01h confirmation
-;   3. Sets diagnostic flag diagnostic_flag on success
-;-----------------------------------------------------------------------------------
-cmd_check_and_set_flag:
-		setb	pin_midi_pwr
-		ljmp	cmdg_d_exit
-
 ;------------------------------- Halt 8-bit DMA (D0h) ------------------------------
 ; Stops active 8-bit DMA transfers
 ; Operation:
@@ -2912,6 +2978,7 @@ cmd_pause_dma8:
 		movx	a,@r0
 		jb		acc_dma8_mode_active,X0f9c
 		clr		ex0
+		jnb		dma16_ch1_enable,X0fb5
 		lcall	X0a3e
 		ljmp	cmdg_d_exit
 
@@ -2924,9 +2991,10 @@ X0f9c:	mov		r0,#8
 X0fa7:	djnz	dma_control_temp,X0fa7
 		anl		a,#0a7h
 		movx	@r0,a
+		jnb		dma16_ch1_enable,X0fb5
 		clr		ex1
 		lcall	X0a3e
-		ljmp	cmdg_d_exit
+X0fb5:	ljmp	cmdg_d_exit
 
 ;------------------------------- Halt 16-bit DMA (D5h) -----------------------------
 ; Stops active 16-bit DMA transfers
@@ -2938,16 +3006,13 @@ cmd_pause_dma16:
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0e7h
-		orl		a,#42h
-		movx	@r0,a
-		mov		dma_control_temp,#64h
-X0f2e:	djnz	dma_control_temp,X0f2e
-		anl		a,#0a7h
+		orl		a,#2
 		movx	@r0,a
 		setb	dma16_ch1_enable
+		jnb		dma8_ch1_enable,X0fca
 		clr		ex1
 		lcall	X0a3e
-		ljmp	cmdg_d_exit
+X0fca:	ljmp	cmdg_d_exit
 
 ;------------------------------- Resume 8-bit DMA (D4h) ----------------------------
 ; Restarts paused 8-bit DMA transfers
@@ -2964,7 +3029,10 @@ cmd_resume_dma8:
 		setb	ex0
 		ljmp	cmdg_d_exit
 
-X0fdd:	mov		r0,#0ah
+X0fdd:	mov		r0,#8
+		movx	a,@r0
+		jnb		acc_dma16_start_pending,X1012
+		mov		r0,#0ah
 		movx	a,@r0
 		push	acc
 		mov		r0,#0dh
@@ -2993,7 +3061,7 @@ X0fdd:	mov		r0,#0ah
 		mov		r0,#0bh
 		mov		a,dma_block_len_lo
 		movx	@r0,a
-		setb	ea
+X1012:	setb	ea
 		setb	ex1
 		ljmp	cmdg_d_exit
 
@@ -3006,37 +3074,62 @@ X0fdd:	mov		r0,#0ah
 cmd_resume_dma16:
 		lcall	X0a26
 		clr		dma16_ch1_enable
-		mov		r0,#12h
-		movx	a,@r0
-		push	acc
-		mov		r0,#15h
-		movx	a,@r0
-		push	acc
 		mov		r0,#10h
 		movx	a,@r0
-		orl		a,#3
-		movx	@r0,a
-		anl		a,#0feh
-		movx	@r0,a
-		mov		r0,#14h
-		pop		acc
-		movx	@r0,a
-		mov		r0,#13h
-		pop		acc
-		movx	@r0,a
-		mov		r0,#10h
-		mov		a,#6
-		movx	@r0,a
-		mov		a,#0
-		movx	@r0,a
-		mov		r0,#14h
-		mov		a,dma_len_temp_hi
-		movx	@r0,a
-		mov		r0,#13h
-		mov		a,dma_len_temp_lo
+		anl		a,#0e5h
 		movx	@r0,a
 		setb	ea
 		setb	ex1
+		ljmp	cmdg_d_exit
+
+;------------------------------- Clear and Exit (DDh) ------------------------------
+; Resets diagnostic flags and warm boot signatures
+; Affects:
+;   - Clears warm boot magic bytes (38h/39h)
+;   - Resets diagnostic flag diagnostic_flag
+;-----------------------------------------------------------------------------------
+cmd_clear_and_exit:
+		mov		38h,#0
+		mov		39h,#0
+		clr		diagnostic_flag
+		ljmp	cmdg_d_exit
+
+;------------------------------- Check and Set Flag (DCh) --------------------------
+; Establishes host-DSP challenge/response protocol
+; Operation:
+;   1. Sets challenge bytes 38h=52h/39h=86h
+;   2. Waits for host to send 01h confirmation
+;   3. Sets diagnostic flag diagnostic_flag on success
+;-----------------------------------------------------------------------------------
+cmd_check_and_set_flag:
+		mov		38h,#52h
+		mov		39h,#86h
+		clr		diagnostic_flag
+X103e:	jnb		pin_dsp_data_rdy,X103e
+		mov		r0,#0
+		nop	
+		nop	
+		movx	a,@r0
+		cjne	a,#1,cmdg_d_exit
+		setb	diagnostic_flag
+		ljmp	cmdg_d_exit
+
+;------------------------------- Clear IT1 Flag (D2h) ------------------------------
+; Disables edge-triggered interrupts for INT1
+; Affects:
+;   - Clears IT1 bit in TCON register
+;-----------------------------------------------------------------------------------
+cmd_clear_it1_flag:
+		clr		it1
+		ljmp	cmdg_d_exit
+
+;------------------------------- Set IT1 Flag (D7h) --------------------------------
+; Enables edge-triggered interrupts for INT1
+; Affects:
+;   - Sets IT1 bit in TCON register
+;-----------------------------------------------------------------------------------
+cmd_set_it1_flag:	
+		setb	it1
 		ljmp	cmdg_d_exit
 
 ;============================= COMMAND GROUP EXIT HANDLER ==========================
@@ -3213,8 +3306,8 @@ adpcm_2_decode:
 
 X10ff:	add		a,r2
 		jnc		X1104
-		; 4.05 uses: mov a,0ffh (which is incorrect)
-		mov		a,0ffh
+		; 4.16 uses: mov a,#0ffh (which is correct)
+		mov		a,#0ffh
 X1104:	mov		r2,a
 		sjmp	adpcm_2_output
 
@@ -3653,7 +3746,7 @@ asp_code:
 ; ------------------------------
 ; Copyright notice
 ; ------------------------------
-dsp_copyright:
+dsp_copyright:	
 		.db	43h,4fh,50h,59h,52h,49h,47h,48h
 		.db	54h,20h,28h,43h,29h,20h,43h,52h
 		.db	45h,41h,54h,49h,56h,45h,20h,54h
@@ -3665,7 +3758,7 @@ dsp_copyright:
 ; DSP version number
 ; ------------------------------
 dsp_version:	
-		.db	4,5
+		.db	4,10h
 
 ; ------------------------------
 ; Unused data?
@@ -3673,248 +3766,47 @@ dsp_version:
 unused:	
 		.db	67h,12h,7fh,8ch,98h,0a4h,0b0h,0bbh
 		.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
-		.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
-		.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
-		.db	98h,8ch,80h,8ch,98h,0a4h,0b0h,0bbh
-		.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
-		.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
-		.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
-		.db	98h,8ch,7fh,73h,67h,5bh,4fh,44h
-		.db	39h,2fh,26h,1dh,16h,0fh,0ah,6
-		.db	3,1,1,1,3,6,0ah,0fh
-		.db	16h,1dh,26h,2fh,39h,44h,4fh,5bh
-		.db	67h,73h,80h,8ch,98h,0a4h,0b0h,0bbh
-		.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
-		.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
-		.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
-		.db	98h,8ch,46h,4bh,50h,4dh,52h,5eh
-		.db	66h,64h,6eh,7ch,88h,80h,8dh,8fh
-		.db	8ch,76h,78h,80h,82h,7dh,87h,8eh
-		.db	90h,94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h
-		.db	7fh,73h,67h,5bh,4fh,44h,39h,2fh
-		.db	26h,1dh,16h,0fh,0ah,6,3,1
-		.db	1,1,3,6,4ch,0b0h,0aeh,0b0h
-		.db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-		.db	70h,6ah,69h,68h,6eh,78h,82h,80h
-		.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-		.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-		.db	0c2h,0c5h,0c4h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0ah,0fh,16h
-		.db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
-		.db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,87h,8eh,90h
-		.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-		.db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-		.db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-		.db	70h,6ah,69h,68h,6eh,78h,82h,80h
-		.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-		.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,98h,8ch,80h,8ch,98h
+		.db	0fch,0feh,0ffh,0feh,0fch
+		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+		.db	0bbh,0b0h,0a4h,98h,8ch,80h,8ch,98h
 		.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-		.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,87h
-		.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-		.db	0c4h,98h,8ch,80h,8ch,98h,0a4h,0b0h
-		.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
-		.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
-		.db	6,3,1,1,1,3,6,0ah
-		.db	0fh,16h,1dh,26h,2fh,39h,44h,4fh
-		.db	5bh,67h,73h,80h,8ch,98h,0a4h,0b0h
-		.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
-		.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-		.db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
-		.db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
-		.db	98h,91h,70h,6ah,69h,68h,6eh,78h
-		.db	82h,80h,7ah,7eh,80h,78h,78h,6eh
-		.db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0d9h,0e2h,0e9h
+		.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+		.db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
+		.db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
+		.db	0fh,0ah,6,3,1,1,1,3
+		.db	6,0ah,0fh,16h,1dh,26h,2fh,39h
+		.db	44h,4fh,5bh,67h,73h,80h,8ch,98h
+		.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
 		.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
 		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
 		.db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
 		.db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
 		.db	80h,8dh,8fh,8ch,76h,78h,80h,82h
 		.db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-		.db	0c2h,0c5h,0c4h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0ah,0fh,16h
-		.db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
-		.db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,87h,8eh,90h
-		.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-		.db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-		.db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-		.db	70h,6ah,69h,68h,6eh,78h,82h,80h
-		.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-		.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,98h,8ch,80h,8ch,98h
-		.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-		.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,87h
-		.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-		.db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
-		.db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
-		.db	98h,91h,70h,6ah,69h,68h,6eh,78h
-		.db	82h,80h,7ah,7eh,80h,78h,78h,6eh
-		.db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0d9h,0e2h,0e9h
-		.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-		.db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
-		.db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
-		.db	80h,8dh,8fh,8ch,76h,78h,80h,82h
-		.db	7dh,98h,8ch,80h,8ch,98h,0a4h,0b0h
-		.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,98h,8ch,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-		.db	0c2h,0c5h,0c4h,0b0h,0aeh,0b0h,0b2h,9eh
-		.db	9ch,9bh,9ch,0a4h,0b0h,0bch,0b8h,0b0h
-		.db	0b2h,9dh,98h,91h,70h,6ah,69h,68h
-		.db	6eh,78h,82h,80h,7ah,7eh,80h,78h
-		.db	78h,6eh,50h,4ch,49h,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+		.db	0c2h,0c5h,0c4h,7fh,73h,67h,5bh,4fh
 		.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
-		.db	6,3,1,1,1,3,6,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
+		.db	6,3,1,1,1,3,6,4ch
+		.db	0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch
+		.db	0a4h,0b0h,7fh,73h,67h,5bh,4fh,44h
+		.db	39h,2fh,26h,1dh,0bch,0b8h,0b0h,0b2h
+		.db	9dh,98h,91h,70h,6ah,69h,68h,6eh
+		.db	78h,82h,80h,7ah,7eh,80h,78h,78h
+		.db	6eh,50h,4ch,49h,0fch,0f9h,0f5h,0f0h
+		.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
+		.db	98h,8ch,7fh,73h,67h,5bh,4fh,44h
+		.db	39h,2fh,26h,1dh,16h,0fh,0ah,6
+		.db	3,1,1,1,3,6,0d9h,0e2h
+		.db	0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh
+		.db	0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h
+		.db	0c6h,0bbh,0b0h,0a4h,98h,8ch,46h,4bh
+		.db	50h,4dh,52h,5eh,66h,64h,6eh,7ch
+		.db	88h,80h,8dh,8fh,8ch,76h,78h,80h
+		.db	82h,7dh,7fh,73h,67h,5bh,4fh,44h
+		.db	39h,2fh,26h,1dh,87h,8eh,90h,94h
+		.db	0a2h,0bah,0c1h,0c2h,0c5h,0c4h,50h,46h
 		.db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-		.db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-		.db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-		.db	0bah,0c1h,0c2h,0c5h,0c4h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,7fh,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0ah,0fh,16h
-		.db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
-		.db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,87h,8eh,90h
-		.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-		.db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-		.db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-		.db	70h,6ah,69h,68h,6eh,78h,82h,80h
-		.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-		.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
-		.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-		.db	0c4h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0ah,0fh,16h,1dh,26h
-		.db	2fh,39h,44h,4fh,5bh,67h,73h,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-		.db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-		.db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-		.db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-		.db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
-		.db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
-		.db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
-		.db	69h,68h,6eh,78h,82h,80h,7ah,7eh
+		.db	7ch,68h,6eh,78h,82h,80h,7ah,7eh
 		.db	80h,78h,78h,6eh,50h,4ch,49h,0fch
 		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
 		.db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
@@ -3925,77 +3817,260 @@ unused:
 		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
 		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
 		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,98h,8ch,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,98h,8ch,80h,8ch,98h,0a4h,0b0h
-		.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,87h,8eh,90h
-		.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,98h
-		.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-		.db	2fh,26h,1dh,16h,0fh,0ah,6,3
-		.db	1,1,1,3,6,0ah,0fh,16h
-		.db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
-		.db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-		.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,87h,8eh,90h
-		.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-		.db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-		.db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-		.db	70h,6ah,69h,68h,6eh,78h,82h,80h
-		.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-		.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-		.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-		.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-		.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-		.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-		.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
-		.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-		.db	0c4h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-		.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-		.db	1dh,16h,0fh,0ah,6,3,1,1
-		.db	1,3,6,0ah,0fh,16h,1dh,26h
-		.db	2fh,39h,44h,4fh,5bh,67h,73h,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-		.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-		.db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-		.db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-		.db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-		.db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
-		.db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
-		.db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
-		.db	69h,68h,6eh,78h,82h,80h,7ah,7eh
-		.db	80h,78h,78h,6eh,50h,4ch,49h,0fch
-		.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-		.db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-		.db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-		.db	0fh,0ah,6,3,1,1,1,3
-		.db	6,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-		.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-		.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-		.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-		.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-		.db	76h,78h,80h,82h,7dh,98h,8ch,80h
-		.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-		.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-		.db	0feh,98h,8ch,80h,8ch,98h,0a4h
+		.db	76h,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah,78h,8,74h,6,0f2h,74h,0
+		.db	0f2h,78h,0ch,0e5h,0fh,0f2h,78h,0bh
+		.db	0e5h,0eh,0f2h,0d2h,0afh,0d2h,0aah,2
+		.db	10h,58h,12h,0ah,26h,0c2h,79h,78h
+		.db	10h,0e2h,54h,0e5h,0f2h,0d2h,0afh,0d2h
+		.db	0aah,2,10h,58h,75h,38h,0,75h
+		.db	39h,0,0c2h,7dh,2,10h,58h,75h
+		.db	38h,52h,75h,39h,86h,0c2h,7dh,30h
+		.db	91h,0fdh,78h,0,0,0,0e2h,0b4h
+		.db	1,0fh,0d2h,7dh,2,10h,58h,0c2h
+		.db	8ah,2,10h,58h,0d2h,8ah,2,10h
+		.db	58h,0c2h,92h,0d2h,0afh,2,4,87h
+		.db	90h,10h,68h,0e5h,20h,54h,0fh,93h
+		.db	73h,13h,56h,2dh,71h,25h,10h,10h
+		.db	10h,1dh,10h,10h,10h,10h,10h,10h
+		.db	10h,2,10h,0eah,12h,11h,0fdh,0f4h
+		.db	12h,12h,6,2,10h,0eah,0e5h,2ah
+		.db	12h,12h,6,2,10h,0eah,12h,11h
+		.db	0fdh,0f5h,2ah,2,10h,0eah,75h,0ah
+		.db	3,12h,11h,0e5h,12h,11h,0fdh,65h
+		.db	26h,25h,25h,0f5h,25h,0e5h,26h,3
+		.db	3,0f5h,26h,0e5h,25h,78h,1dh,0f2h
+		.db	0c2h,78h,0d2h,95h,0c2h,95h,20h,90h
+		.db	0fdh,0,0d2h,78h,2,10h,0eah,90h
+		.db	16h,58h,0e4h,93h,20h,90h,0fdh,78h
+		.db	0,0,0,0f2h,74h,1,93h,20h
+		.db	90h,0fdh,78h,0,0,0,0f2h,2
+		.db	10h,0eah,90h,16h,2bh,0e4h,0f5h,0f0h
+		.db	93h,12h,12h,6,60h,5,0e5h,0f0h
+		.db	4,80h,0f3h,0c2h,92h,2,4,8ah
+		.db	0eeh,33h,40h,27h,33h,0feh,0edh,40h
+		.db	0fh,13h,0fdh,70h,3,0dh,80h,42h
+		.db	2ah
