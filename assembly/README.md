@@ -19,7 +19,8 @@ Patched Creative 4.13 Firmware:<br>
 ```v413-8k_b34a9a0e_patch5.asm:```
 - Fixed hanging note bug
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
-- Fixed ADPCM decoding typo
+- Fixed ADPCM decoding typo<br>
+(Note: May have issues with duke nukem 2 on AWE32 Cards)
 
 ---
 
