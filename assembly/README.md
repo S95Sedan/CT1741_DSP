@@ -30,7 +30,7 @@ Custom Creative 4.17 Firmwares:<br>
 - Fixed PSW bug in ExtInt0/ExtInt1 interrupt handlers
 - Fixed ADPCM decoding typo
 - Removed Code Jumps (vector_dma_dac_adpcm*, dac_silence, vector_op5)<br>
-  (Code jumps prevent duke2 from working)
+  (Duke2 should now work properly)
 - Fixed 'setb it1' in 'start' routine
 - Removed X-Bus registers (where it wouldnt break things)
 - Removed unused data at the end
