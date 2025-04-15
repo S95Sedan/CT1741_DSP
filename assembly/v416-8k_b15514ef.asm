@@ -2,6 +2,22 @@
 ; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.16
 ;=================================================================================
 
+;---------------------------------- Global Variables -----------------------------
+; Stock, Stack=0c0h
+.EQU init_stack,				0c0h	;			Stack Pointer
+.EQU init_scon,					42h		;			Serial Control
+.EQU init_pcon,					80h		;			Power Control
+.EQU init_tmod,					21h		;			Timer Mode
+.EQU init_timer1_byte_lo,		0fch	;			Timer 1 Low byte
+.EQU init_timer1_byte_hi,		0fch	;			Timer 1 High byte
+
+;---------------------------------- MIDI Buffer ----------------------------------
+; Stock, Size=80h, End=0c0h
+.EQU midi_buffer_size,			80h		;			MIDI Buffer - Size
+.EQU midi_buffer_pt_write,		40h		;			MIDI Buffer - Write Pointer
+.EQU midi_buffer_pt_read,		40h		;			MIDI Buffer - Read Pointer
+.EQU midi_buffer_end,			0c0h	;			MIDI Buffer - End
+
 ;---------------------------------- Command Bytes --------------------------------
 .EQU command_byte_0,			0		; 			Command Byte Bit 0 (LSB)
 .EQU command_byte_1,			1		; 			Command Byte Bit 1
@@ -11,13 +27,15 @@
 ;============================= HARDWARE REGISTER MAP =============================
 .EQU isr_temp_storage,			00h		; rb0r0		ISR Temporary Storage
 
+;---------------------------------- CSP Registers --------------------------------
+.EQU csp_program_id_lo,			08h		; rb1r0		DMA Command Parameter 0
+.EQU csp_program_id_hi,			09h		; rb1r1		DMA Command Parameter 1
+
 ;---------------------------------- ADPCM Registers ------------------------------
 .EQU adpcm_mode_reg,			0ah		; rb1r2		ADPCM Mode Control
 .EQU adpcm_state_reg,			0bh		; rb1r3		ADPCM State Control
 
 ;---------------------------------- DMA Registers --------------------------------
-.EQU dma_param0,				08h		; rb1r0		DMA Command Parameter 0
-.EQU dma_param1,				09h		; rb1r1		DMA Command Parameter 1
 .EQU dma_len_temp_lo,			0ch		; rb1r4		DMA Length Temp Storage (Low)
 .EQU dma_len_temp_hi,			0dh		; rb1r5		DMA Length Temp Storage (High)
 .EQU dma_block_len_lo,			0eh		; rb1r6		DMA Block Length Low (Predefined)
@@ -66,7 +84,7 @@
 
 ;---------------------------------- Vector Systems --------------------------------
 .EQU vector_lo,					29h		;			Interrupt Vector Low Byte
-.EQU vector_hi,					2bh		;			Interrupt Vector High Byte
+.EQU csp_lock_count,			2bh		;			Interrupt Vector High Byte
 
 .EQU dma8_config_temp,			2ch		; 2ch		8-bit DMA Temporary storage
 .EQU dma8_autoreinit_en,		64h		; 2ch.4		8-bit DMA auto-reinit enable
@@ -117,10 +135,10 @@
 .EQU acc_addr_hi_or_mode,		0e7h	; acc.7		Address high bit or mode
 
 ;---------------------------------- CSP Pins ------------------------------------
-.EQU csp_pin_1,					80h		; 			CSP Unknown Function (Pin 1)
-.EQU csp_pin_2,					81h		; 			CSP Unknown Function (Pin 2)
-.EQU csp_pin_3,					82h		; 			CSP Unknown Function (Pin 3)
-.EQU csp_pin_4,					83h		; 			CSP Unknown Function (Pin 4)
+.EQU csp_data_port,				80h		; 			CSP Data/Command port
+.EQU csp_status_port,			81h		; 			CSP Status/Handshake port
+.EQU csp_control_port,			82h		; 			CSP Control port
+.EQU csp_program_port,			83h		; 			CSP Program upload port
 
 ;============================= INTERRUPT VECTOR TABLE ============================
 ;-------------------- Vector Offsets for Critical Hardware Events ----------------
@@ -244,7 +262,7 @@ X00ae:	mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -259,7 +277,7 @@ X00bd:	mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -291,7 +309,7 @@ X00f7:	clr		dma8_mode
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -317,7 +335,7 @@ X0122:	jb		pin_dsp_data_rdy,X0129
 X0129:	mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -331,7 +349,7 @@ X0137:	mov		r0,#10h
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -360,7 +378,7 @@ X016a:	clr		dma16_mode
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -396,7 +414,7 @@ vector_adpcm2_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -423,7 +441,7 @@ X01d1:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -464,7 +482,7 @@ X0214:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -501,7 +519,7 @@ vector_adpcm4_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -528,7 +546,7 @@ X027a:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -568,7 +586,7 @@ X02bd:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -603,7 +621,7 @@ X02e6:	dec		r3
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -644,7 +662,7 @@ X033b:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -667,7 +685,7 @@ X0364:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -697,7 +715,7 @@ vector_dac_silence_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -755,19 +773,18 @@ start:
 		setb	dma16_ch1_enable
 		clr		pin_coldboot_done
 		clr		pin_periph_dis
-		mov		sp,#0c0h
+		mov		sp,#init_stack
 		clr		pin_dma_req
 		setb	pin_midi_pwr
-		mov		scon,#42h
-		mov		th1,#0fch
-		mov		tl1,#0fch
-		mov		tmod,#21h
-		mov		pcon,#80h
+		mov		scon,#init_scon
+		mov		th1,#init_timer1_byte_hi
+		mov		tl1,#init_timer1_byte_lo
+		mov		tmod,#init_tmod
+		mov		pcon,#init_pcon
 		setb	tr1
 		setb	ren
 		setb	it0
-		; Error, 4.16 uses 'clr it1' which is incorrect.
-		; Should be 'setb it1'
+		; 4.16 uses: clr it1 (which is incorrect)
 		clr		it1
 		mov		a,#34h
 		cjne	a,warmboot_magic1,cold_boot
@@ -836,7 +853,7 @@ warm_boot:
 		mov		adpcm_state_reg,#0
 		mov		dma8_config_temp,#0
 		mov		dma16_config_temp,#0
-		mov		vector_hi,#0
+		mov		csp_lock_count,#0
 		mov		auxiliary_reg,#0
 		clr		pin_dma_timing_fault
 		setb	pin_warmboot_flag
@@ -925,7 +942,7 @@ table_major_cmds:
 
 ;------------------------------- Command Group Handlers --------------------------
 vector_cmdg_none:      sjmp check_cmd			; Groups 5,6,A (Invalid)
-vector_cmdg_status:    ljmp cmdg_status			; Group 0: Status commands
+vector_cmdg_csp:    ljmp cmdg_csp				; Group 0: CSP commands
 vector_cmdg_dac1:      ljmp cmdg_dma_dac1		; Group 1: Primary DMA audio
 vector_cmdg_dac2:      ljmp cmdg_dma_dac2		; Group 7: Secondary DMA audio 
 vector_cmdg_hs:        ljmp cmdg_hs				; Group 9: High-speed transfers
@@ -1126,13 +1143,13 @@ X0624:	mov		r0,#4
 		setb	ea
 X0655:	ljmp	check_cmd
 
-;============================== STATUS COMMAND HANDLER ==========================
-;------------------------------- Group 0: Status Control -------------------------
+;============================== CSP COMMAND HANDLER ==========================
+;------------------------------- Group 0: CSP Control -------------------------
 ; Processes status/configuration commands (00h-0Fh)
-; Uses jump table at table_status_cmds for subcommand dispatch
+; Uses jump table at table_csp_cmds for subcommand dispatch
 ;---------------------------------------------------------------------------------
-cmdg_status:
-		mov		dptr,#table_status_cmds
+cmdg_csp:
+		mov		dptr,#table_csp_cmds
 		mov		a,command_byte
 		anl		a,#0fh
 		movc	a,@a+dptr
@@ -1141,120 +1158,126 @@ cmdg_status:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  00h    | cmd_none					(75h)
-;   1   |  01h    | cmd_vector_init				(0f8h)
-;   2   |  02h    | cmd_port_config				(10h)
-;   3   |  03h    | cmd_read_port80				(43h)
-;   4   |  04h    | cmd_write_port82			(4ch)
-;   5   |  05h    | cmd_dual_port_write			(34h)
-;   6   |  06h    | cmd_inc_vector_high			(55h)
-;   7   |  07h    | cmd_dec_vector_high			(5ah)
+;   0   |  00h    | cmd_0_none					(75h)
+;   1   |  01h    | cmd_csp_upload				(0f8h)
+;   2   |  02h    | cmd_csp_init				(10h)
+;   3   |  03h    | cmd_csp_read_data			(43h)
+;   4   |  04h    | cmd_csp_control_mode		(4ch)
+;   5   |  05h    | cmd_csp_dual_write			(34h)
+;   6   |  06h    | cmd_csp_lock_inc			(55h)
+;   7   |  07h    | cmd_csp_lock_dec			(5ah)
 ; ---------------------------------------------------
-;   8   |  08h    | cmd_read_port82				(6ch)
-;   9   |  09h    | cmd_read_rb1_regs			(91h)
-;  10   |  0Ah    | cmd_read_vector_high		(67h)
-;  11   |  0Bh    | cmd_block_write				(9dh)
-;  12   |  0Ch    | cmd_block_read				(0c8h)
-;  13   |  0Dh    | cmd_none					(75h)
+;   8   |  08h    | cmd_csp_version				(6ch)
+;   9   |  09h    | cmd_csp_program_id			(91h)
+;  10   |  0Ah    | cmd_csp_program_lock		(67h)
+;  11   |  0Bh    | cmd_csp_block_write			(9dh)
+;  12   |  0Ch    | cmd_csp_block_read			(0c8h)
+;  13   |  0Dh    | cmd_0_none					(75h)
 ;  14   |  0Eh    | cmd_xbus_write				(78h)
 ;  15   |  0Fh    | cmd_xbus_read				(86h)
 ; ----------------------------------------------------
-table_status_cmds:
+table_csp_cmds:
 		.db	75h,0f8h,10h,43h,4ch,34h,55h,5ah
 		.db	6ch,91h,67h,9dh,0c8h,75h,78h,86h
 
-;=============================== PORT CONFIGURATION ==============================
-;------------------------------- [02h] Port Configuration Setup ------------------
-; Initializes I/O ports 80h-81h with handshake protocol
-; Input: [Port80_Init_Value]
-; Security: Uses 0F2h signature verification
+;=============================== CSP PORT CONFIGURATION ==============================
+;------------------------------- [02h] CSP Initialize ------------------------------
+; Sets up CSP communication ports with handshake
+; Uses ports 80h (data), 81h (status), F2h signature
 ;---------------------------------------------------------------------------------
-cmd_02:
+cmd_csp_init:
 		lcall	dsp_input_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0f2h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X067e:	mov		r0,#80h
+csp_init_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		jb		pin_dsp_data_rdy,X0692
-		cjne	a,dma_control_temp,X067e
+		jb		pin_dsp_data_rdy,csp_init_done
+		cjne	a,dma_control_temp,csp_init_wait
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-X0692:	ljmp	cmdg_0_exit
+csp_init_done:
+		ljmp	cmdg_0_exit
 
-;------------------------------- [05h] Dual Port Write ---------------------------
-; Writes values to ports 80h/81h simultaneously
-; Input: [Value80][Value81]
+;------------------------------- [05h] CSP Dual Write -------------------------------
+; Writes to both CSP data and status ports
+; Input: Byte1 → 80h (data), Byte2 → 81h (status)
 ;---------------------------------------------------------------------------------
-cmd_05:
+cmd_csp_dual_write:
 		lcall	dsp_input_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
 
-;=============================== PORT OPERATIONS =================================
-;------------------------------- [03h] Read Port 80h Status ----------------------
-; Output: [Port80_Value]
+;=============================== CSP PORT OPERATIONS ================================
+;------------------------------- [03h] CSP Read Data --------------------------------
+; Reads current value from CSP data port (80h)
+; Output: Returns byte from CSP data port
 ;---------------------------------------------------------------------------------
-cmd_03:
-		mov		r0,#80h
+cmd_csp_read_data:
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	cmdg_0_exit
 
-;------------------------------- [04h] Write Port 82h Config ----------------------
-; Programs extended configuration register
-; Input: [Config_Value]
+;------------------------------- [04h] CSP Set Mode ---------------------------------
+; Configures CSP operation mode
+; Input: Control byte → 82h (control port)
 ;---------------------------------------------------------------------------------
-cmd_04:
+cmd_csp_control_mode:
 		lcall	dsp_input_data
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
 
-;============================= VECTOR MANAGEMENT =================================
-;------------------------------- [06h] Increment Vector High ---------------------
-; Increases vector_hi register value
+;=============================== CSP LOCK MANAGEMENT ================================
+;------------------------------- [06h] CSP Lock Increment ---------------------------
+; Increases program lock count - prevents uploads
+; Modifies: csp_lock_count (8-bit, no overflow check)
 ;---------------------------------------------------------------------------------
-cmd_06:
-		inc		vector_hi
+cmd_csp_lock_inc:
+		inc		csp_lock_count
 		ljmp	cmdg_0_exit
 
-;------------------------------- [07h] Decrement Vector High ---------------------
-; Decreases vector_hi register value
+;------------------------------- [07h] CSP Lock Decrement ---------------------------
+; Decreases program lock count - enable uploads
 ; Failsafe: Won't decrement below 00h
 ;---------------------------------------------------------------------------------
-cmd_07:
-		mov		a,vector_hi
-		cjne	a,#0,X06c3
+cmd_csp_lock_dec:
+		mov		a,csp_lock_count
+		cjne	a,#0,csp_dec_valid
 		ljmp	cmdg_0_exit
 
-X06c3:	dec		vector_hi
+csp_dec_valid:
+		dec		csp_lock_count
 		ljmp	cmdg_0_exit
 
-;------------------------------- [0Ah] Read Vector High --------------------------
-; Output: [vector_high_Value]
+;------------------------------- [0Ah] CSP Get Lock Count ---------------------------
+; Output: Current lock count value
 ;---------------------------------------------------------------------------------
-cmd_0A:
-		mov		a,vector_hi
+cmd_csp_program_lock:
+		mov		a,csp_lock_count
 		lcall	dsp_output_data
 
-;------------------------------- [08h] Read Port 82h Config ----------------------
-; Output: [Port82h_Value]
+;=============================== CSP VERSION CONTROL ================================
+;------------------------------- [08h] CSP Get Version ------------------------------
+; Reads CSP chip version from X-Bus
+; Output: Returns version byte from fixed X-Bus location
 ;---------------------------------------------------------------------------------
-cmd_08:
-		mov		r0,#82h
+cmd_csp_version:
+		mov		r0,#csp_control_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	cmdg_0_exit
@@ -1263,17 +1286,16 @@ cmd_08:
 ;------------------------------- [00h/0Dh] No Operation --------------------------
 ; Placeholder for unimplemented commands
 ;---------------------------------------------------------------------------------
-cmd_00:
-cmd_0D:
+cmd_0_none:
 		ljmp	wait_for_cmd
 
-;=============================== X-BUS OPERATIONS ================================
-;------------------------------- [0Eh] X-Bus Write -------------------------------
-; Writes value to arbitrary X-Bus address
-; Input: [Address][Value]
-; Security: Full bus access granted
+;=============================== X-BUS OPERATIONS ===================================
+;------------------------------- [0Eh] X-Bus Write ----------------------------------
+; Writes to any X-Bus address
+; Input: [Address][Value] → Full bus access
+; Security: No validation performed
 ;---------------------------------------------------------------------------------
-cmd_0E:
+cmd_xbus_write:
 		lcall	dsp_input_data
 		mov		b,a
 		lcall	dsp_input_data
@@ -1281,12 +1303,11 @@ cmd_0E:
 		movx	@r0,a
 		ljmp	wait_for_cmd
 
-;------------------------------- [0Fh] X-Bus Read --------------------------------
-; Reads value from X-Bus address
-; Input: [Address]
-; Output: [Value]
+;------------------------------- [0Fh] X-Bus Read -----------------------------------
+; Reads from any X-Bus address
+; Input: [Address] → Returns value
 ;---------------------------------------------------------------------------------
-cmd_0F:
+cmd_xbus_read:
 		lcall	dsp_input_data
 		mov		r0,a
 		movx	a,@r0
@@ -1294,155 +1315,167 @@ cmd_0F:
 cmdg_0_exit:
 		ljmp	wait_for_cmd
 
-;=============================== REGISTER ACCESS =================================
-;------------------------------- [09h] Read RB1 Registers ------------------------
-; Output: [dma_param0][dma_param1]
+;=============================== CSP PROGRAM ID ACCESS ==============================
+;------------------------------- [09h] Get CSP Program ID --------------------------
+; Output: [Program_ID_Low][Program_ID_High] 
+; Returns last 2 bytes of uploaded CSP program
 ;---------------------------------------------------------------------------------
-cmd_09:
-		mov		a,dma_param0
+cmd_csp_program_id:
+		mov		a,csp_program_id_lo
 		lcall	dsp_output_data
-		mov		a,dma_param1
+		mov		a,csp_program_id_hi
 		lcall	dsp_output_data
 		sjmp	cmdg_0_exit
 
-;=============================== BLOCK TRANSFERS =================================
-;------------------------------- [0Bh] Block Write -------------------------------
-; Writes data pairs to ports 80h/81h
-; Input: [Length][Data...]
-; Protocol: Uses C0h handshake signature
+;=============================== CSP BLOCK TRANSFERS ================================
+;------------------------------- [0Bh] CSP Block Write ------------------------------
+; Sends data block to CSP program 
+; Input: [Length][Data_Pairs...] → (Low,High) words
+; Uses C0h handshake protocol on status port
 ;---------------------------------------------------------------------------------
-cmd_0B:
+cmd_csp_block_write:
 		lcall	dsp_input_data
 		mov		rem_xfer_len_lo,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0c0h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X070d:	mov		r0,#80h
+csp_block_write_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,dma_control_temp,X070d
-X0713:	lcall	dsp_input_data
-		mov		r0,#80h
+		cjne	a,dma_control_temp,csp_block_write_wait
+csp_block_write_loop:
+		lcall	dsp_input_data
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		clr		a
-		cjne	a,rem_xfer_len_lo,X0725
+		cjne	a,rem_xfer_len_lo,csp_block_write_next
 		sjmp	cmdg_0_exit
 
-X0725:	dec		rem_xfer_len_lo
-		sjmp	X0713
+csp_block_write_next:
+		dec		rem_xfer_len_lo
+		sjmp	csp_block_write_loop
 
-;------------------------------- [0Ch] Block Read --------------------------------
-; Reads data pairs from ports 80h/81h
-; Input: [Length]
-; Output: [Data...]
-; Protocol: Uses C1h handshake signature
+;------------------------------- [0Ch] CSP Block Read -------------------------------
+; Receives data block from CSP program
+; Input: [Length] → Returns [Data_Pairs...] (Low,High)
+; Uses C1h handshake protocol on status port
 ;---------------------------------------------------------------------------------
-cmd_0C:
+cmd_csp_block_read:
 		lcall	dsp_input_data
 		mov		rem_xfer_len_lo,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0c1h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X0738:	mov		r0,#80h
+csp_block_read_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,dma_control_temp,X0738
+		cjne	a,dma_control_temp,csp_block_read_wait
 		mov		a,dma_control_temp
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X0743:	mov		r0,#80h
+csp_block_read_loop:
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		clr		a
-		cjne	a,rem_xfer_len_lo,X0755
+		cjne	a,rem_xfer_len_lo,csp_block_read_next
 		sjmp	cmdg_0_exit
 
-X0755:	dec		rem_xfer_len_lo
-		sjmp	X0743
+csp_block_read_next:
+		dec		rem_xfer_len_lo
+		sjmp	csp_block_read_loop
 
-;============================= SYSTEM INITIALIZATION =============================
-;------------------------------- [01h] Vector System Init ------------------------
-; Initializes interrupt vectors with checksum
-; Input: [Length][Checksum][dma_param0][dma_param1]
-; Security: Only works when vector_hi == 0
-; Output: 00h=Success, FFh=Failure
+;=============================== CSP PROGRAM MANAGEMENT =============================
+;------------------------------- [01h] CSP Upload Program ---------------------------
+; Uploads new CSP program with checksum
+; Input: [Length][Checksum][Program ID] → 83h (program port)
+; Security: Lock count must be 0, uses AA/FF status codes
 ;---------------------------------------------------------------------------------
-cmd_01:
-		mov		a,vector_hi
+cmd_csp_upload:
+		mov		a,csp_lock_count
 		cjne	a,#0,cmdg_0_exit
 		lcall	dsp_output_data
 		mov		a,#0
 		mov		33h,a
 		mov		34h,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		lcall	dsp_input_data
 		clr		c
 		subb	a,#4
 		mov		rem_xfer_len_lo,a
 		lcall	dsp_input_data
-		jnc		X077b
+		jnc		csp_upload_calc_len
 		dec		a
-X077b:	mov		rem_xfer_len_hi,a
+csp_upload_calc_len:
+		mov		rem_xfer_len_hi,a
 		mov		a,#8ch
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#8ah
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
-X0787:	lcall	dsp_input_data
-		mov		r0,#83h
+csp_upload_loop:
+		lcall	dsp_input_data
+		mov		r0,#csp_program_port
 		movx	@r0,a
 		add		a,33h
 		mov		33h,a
-		jnc		X0795
+		jnc		csp_upload_next
 		inc		34h
-X0795:	clr		a
-		cjne	a,rem_xfer_len_lo,X07d9
-		cjne	a,rem_xfer_len_hi,X07d7
+csp_upload_next:
+		clr		a
+		cjne	a,rem_xfer_len_lo,csp_upload_dec_lo
+		cjne	a,rem_xfer_len_hi,csp_upload_dec_hi
 		lcall	dsp_input_data
 		mov		35h,a
 		lcall	dsp_input_data
 		mov		36h,a
 		mov		a,#0
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#70h
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,33h
-		cjne	a,35h,X07c5
+		cjne	a,35h,csp_upload_fail
 		mov		a,34h
-		cjne	a,36h,X07c5
-		mov		r0,#80h
+		cjne	a,36h,csp_upload_fail
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,#0aah,X07c7
+		cjne	a,#0aah,csp_upload_fail_code
 		mov		a,#0
-		ljmp	X07c7
+		ljmp	csp_upload_fail_code
 
-X07c5:	mov		a,#0ffh
-X07c7:	lcall	dsp_output_data
+csp_upload_fail:
+		mov		a,#0ffh
+csp_upload_fail_code:
+		lcall	dsp_output_data
 		lcall	dsp_input_data
-		mov		dma_param0,a
+		mov		csp_program_id_lo,a
 		lcall	dsp_input_data
-		mov		dma_param1,a
+		mov		csp_program_id_hi,a
 		ljmp	cmdg_0_exit
 
-X07d7:	dec		rem_xfer_len_hi
-X07d9:	dec		rem_xfer_len_lo
-		sjmp	X0787
+csp_upload_dec_hi:
+		dec		rem_xfer_len_hi
+csp_upload_dec_lo:
+		dec		rem_xfer_len_lo
+		sjmp	csp_upload_loop
 
 ;============================= DSP RUNTIME CONFIGURATION =========================
 ;------------- Group 4: Samplerate, DMA Timing, and Peripheral Control -----------
@@ -1606,8 +1639,8 @@ X085f:	lcall	convert_samplerate
 ; Input: Big-endian 16-bit rate (playback/record)
 ; Affects: dma_addr_lo/dma_addr_hi (active rate registers)
 ;---------------------------------------------------------------------------------
+cmd_set_input_samplerate:						 
 cmd_set_output_samplerate:
-cmd_set_input_samplerate:
 		jnb		pin_dsp_data_rdy,cmd_set_input_samplerate
 		mov		r0,#0
 		nop	
@@ -1915,7 +1948,6 @@ cmd_dsp_command_status:
 ;------------------------------- DSP Status Report ---------------------------------
 ; [FBh] Status Report (Group F Index: 11)
 ; Returns contents of DSP status register (23h).
-; Output: Value of 23h register (bitmask)
 ;-----------------------------------------------------------------------------------
 cmd_dsp_status:
 		mov		a,status_reg
@@ -1954,7 +1986,7 @@ cmd_F2:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -1972,7 +2004,7 @@ cmd_F3:
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -2099,9 +2131,9 @@ cmd_midi_read_write_poll:
 skip_midi_timestamp_setup:
 		mov		a,sbuf
 		clr		ri
-		mov		r1,#40h
-		mov		r2,#40h
-		mov		r4,#80h
+		mov		r1,#midi_buffer_pt_write
+		mov		r2,#midi_buffer_pt_read
+		mov		r4,#midi_buffer_size
 		ljmp	midi_check_for_input_data
 
 ;------------------------------- MIDI Polling Loop ----------------------------------
@@ -2134,7 +2166,7 @@ midi_write_poll:
 		mov		sbuf,a
 midi_check_for_input_data:
 		jb		ri,midi_has_input_data
-		cjne	r4,#80h,midi_buffer_status_check
+		cjne	r4,#midi_buffer_size,midi_buffer_status_check
 		sjmp	midi_poll_loop
 
 midi_buffer_status_check:
@@ -2146,15 +2178,15 @@ midi_has_input_data:
 		jnb		command_byte_1,midi_read_no_timestamp
 		clr		tr0
 		mov		a,r5
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		mov		a,r6
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		mov		a,r7
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		setb	tr0
 midi_read_no_timestamp:
 		mov		a,sbuf
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		clr		ri
 		sjmp	midi_poll_loop
 
@@ -2165,8 +2197,8 @@ midi_flush_buffer_to_host:
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#0c0h,midi_nowrap_readbuffer
-		mov		r2,#40h
+		cjne	r2,#midi_buffer_end,midi_nowrap_readbuffer
+		mov		r2,#midi_buffer_pt_read
 midi_nowrap_readbuffer:
 		mov		r0,#0
 		nop	
@@ -2177,7 +2209,7 @@ midi_nowrap_readbuffer:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -2185,7 +2217,7 @@ midi_skip_interrupt:
 		sjmp	midi_poll_loop
 
 ;------------------------------- Buffer Write Operation ----------------------------
-midi_buffer_write:
+midi_buffer_store_data:
 		cjne	r4,#0,midi_store_read_data_to_buffer
 		ljmp	midi_ready_to_receive_more
 
@@ -2193,8 +2225,8 @@ midi_store_read_data_to_buffer:
 		mov		@r1,a
 		inc		r1
 		dec		r4
-		cjne	r1,#0c0h,midi_ready_to_receive_more
-		mov		r1,#40h
+		cjne	r1,#midi_buffer_end,midi_ready_to_receive_more
+		mov		r1,#midi_buffer_pt_write
 midi_ready_to_receive_more:
 		ret	
 
@@ -2218,9 +2250,9 @@ midi_uart_init:
 		setb	midi_active
 		mov		a,sbuf
 		clr		ri
-		mov		r1,#40h
-		mov		r2,#40h
-		mov		r4,#80h
+		mov		r1,#midi_buffer_pt_write
+		mov		r2,#midi_buffer_pt_read
+		mov		r4,#midi_buffer_size
 		mov		warmboot_magic1,#34h
 		mov		warmboot_magic2,#12h
 		ret	
@@ -2246,7 +2278,7 @@ X0bdc:	clr		pin_dsp_busy
 		jb		pin_dsp_data_rdy,X0c09
 		jnb		pin_midi_irq,X0bfe
 		jb		ri,X0c12
-		cjne	r4,#80h,midi_buffer_process
+		cjne	r4,#midi_buffer_size,midi_buffer_process
 X0bea:	jnb		ti,X0bdc
 		mov		r0,#2
 		movx	a,@r0
@@ -2280,7 +2312,7 @@ midi_buffer_process:
 		sjmp	X0bea
 
 X0c12:	mov		a,sbuf
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		clr		ri
 		sjmp	X0bea
 
@@ -2289,8 +2321,8 @@ X0c1b:	mov		a,r2
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#0c0h,X0c25
-		mov		r2,#40h
+		cjne	r2,#midi_buffer_end,X0c25
+		mov		r2,#midi_buffer_pt_read
 X0c25:	mov		r0,#2
 		movx	@r0,a
 		sjmp	X0bea
@@ -2873,8 +2905,8 @@ cmdg_misc:
 ;  11   |  DBh    | cmd_d_none					(10h)
 ;  12   |  DCh    | cmd_check_and_set_flag		(19h)
 ;  13   |  DDh    | cmd_clear_and_exit			(1Ch)
-;  14   |  DEh    | cmd_set_ctrl_bits_0_1		(1Fh)
-;  15   |  DFh    | cmd_clear_ctrl_bit_1		(28h)
+;  14   |  DEh    | cmd_set_start_dma16			(1Fh)
+;  15   |  DFh    | cmd_clear_start_dma16		(28h)
 ; ----------------------------------------------------
 table_misc_cmds:
 		.db	5ch,48h,13h,4dh,0a0h,8bh,0ech,16h
@@ -2890,20 +2922,16 @@ vector_cmd_check_and_set_flag:	ljmp	cmd_check_and_set_flag
 vector_cmd_clear_and_exit:		ljmp	cmd_clear_and_exit
 
 ;============================= CONTROL REGISTER OPERATIONS =========================
-;------------------------------- Set Control Bits 0-1 (DEh) ------------------------
-; Sets bits 0 and 1 in control register 05h (undocumented)
-;-----------------------------------------------------------------------------------
-cmd_set_ctrl_bits_0_1:
+;------------------------------- Set 16-bit DMA Start Pending (DEh) ----------------
+cmd_set_start_dma16:
 		mov		r0,#5
 		movx	a,@r0
 		orl		a,#3
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
-;------------------------------- Clear Control Bit 1 (DFh) -------------------------
-; Clears bit 1 in control register 05h (undocumented)
-;-----------------------------------------------------------------------------------
-cmd_clear_ctrl_bit_1:
+;------------------------------- Clear 16-bit DMA Start Pending (DFh) --------------
+cmd_clear_start_dma16:
 		mov		r0,#5
 		movx	a,@r0
 		clr		acc_dma16_start_pending
@@ -3218,16 +3246,13 @@ cmd_dsp_dma_id:
 		mov		adpcm_mode_reg,#3
 		lcall	dma_update_control_register
 		lcall	dsp_input_data
-		; dsp_dma_id0 += dsp_dma_id1 XOR challenge_byte
 		xrl		a,dsp_dma_id1
 		add		a,dsp_dma_id0
 		mov		dsp_dma_id0,a
-		; dsp_dma_id1 = dsp_dma_id1 >> 2 (actually a rotate)
 		mov		a,dsp_dma_id1
 		rr		a
 		rr		a
 		mov		dsp_dma_id1,a
-		; Get current value of dsp_dma_id0 and send it to host PC (response)
 		mov		a,dsp_dma_id0
 		mov		r0,#1dh
 		movx	@r0,a
@@ -3584,30 +3609,30 @@ dma16_init:
 ;-----------------------------------------------------------------------------------
 X1233:
 		mov		a,#0
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		mov		rem_xfer_len_lo,#0bbh
 		mov		rem_xfer_len_hi,#3
 		mov		a,#8ch
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#8ah
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		dptr,#asp_code
 X124e:	mov		a,#0
 		movc	a,@a+dptr
-		mov		r0,#83h
+		mov		r0,#csp_program_port
 		movx	@r0,a
 		cjne	a,rem_xfer_len_lo,X1269
 		cjne	a,rem_xfer_len_hi,X1267
 		mov		a,#0
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#70h
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		ljmp	X126e
 
