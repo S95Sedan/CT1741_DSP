@@ -43,6 +43,5 @@ Custom Creative 4.17 Firmwares:<br>
 - Removed Code Jumps (vector_dma_dac_adpcm*, dac_silence, vector_op5)<br>
   (Duke2 should now work properly)
 - Fixed 'setb it1' in 'start' routine
-- Removed X-Bus registers (where it wouldnt break things)
 - Removed unused data at the end
 - Updated to a custom firmware - Version 4.17
