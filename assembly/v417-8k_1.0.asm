@@ -4,9 +4,9 @@
 ;=================================================================================
 ; Fixes & Changes:
 ; 1. Hanging Note Fix		(int0_main_handler, int1_main_handler)
-; 2. PSW Fix				(vector_dma_dac_adpcm*, dac_silence)
+; 2. PSW Fix				(vector_dma_dac_adpcm*, vector_dac_silence)
 ; 3. ADPCM Fix				(X10ff)
-; 4. Removed ljmp X006e		(vector_dma_dac_adpcm*, dac_silence, vector_op5)
+; 4. Removed ljmp X006e		(vector_dma_dac_adpcm*, vector_dac_silence, vector_midi_handler)
 ; 							(Fixes Duke Nukem II crash on level load)
 ; 5. setb it1				(start)
 ;
@@ -14,43 +14,92 @@
 ; x. Removed unused data at the end.
 ;=================================================================================
 
-;---------------------------------- Command Bytes --------------------------------
+;---------------------------------- Command Bytes --------------------------------------
 .EQU command_byte_0,			0		; 			Command Byte Bit 0 (LSB)
 .EQU command_byte_1,			1		; 			Command Byte Bit 1
 .EQU command_byte_2,			2		; 			Command Byte Bit 2
 .EQU command_byte_3,			3		; 			Command Byte Bit 3 (MSB)
 
-;============================= HARDWARE REGISTER MAP =============================
+;---------------------------------- Global Variables -----------------------------------
+; Stock, Stack=0c0h
+.EQU init_stack,				0c0h	;			Stack Pointer
+.EQU init_scon,					42h		;			Serial Control
+.EQU init_pcon,					80h		;			Power Control
+.EQU init_tmod,					21h		;			Timer Mode
+.EQU init_timer1_byte_lo,		0fch	;			Timer 1 Low byte
+.EQU init_timer1_byte_hi,		0fch	;			Timer 1 High byte
+
+;---------------------------------- MIDI Buffer ----------------------------------------
+; Stock, Size=80h, End=0c0h
+.EQU midi_buffer_size,			80h		;			MIDI Buffer - Size
+.EQU midi_buffer_pt_write,		40h		;			MIDI Buffer - Write Pointer
+.EQU midi_buffer_pt_read,		40h		;			MIDI Buffer - Read Pointer
+.EQU midi_buffer_end,			0c0h	;			MIDI Buffer - End
+
+;================================== SYSTEM ARCHITECTURE ================================
 .EQU isr_temp_storage,			00h		; rb0r0		ISR Temporary Storage
 
-;---------------------------------- ADPCM Registers ------------------------------
+;=============================== PERIPHERAL REGISTER MAP ===============================
+;---------------------------------- ADPCM Subsystem ------------------------------------
 .EQU adpcm_mode_reg,			0ah		; rb1r2		ADPCM Mode Control
 .EQU adpcm_state_reg,			0bh		; rb1r3		ADPCM State Control
 
-;---------------------------------- DMA Registers --------------------------------
-.EQU dma_param0,				08h		; rb1r0		DMA Command Parameter 0
-.EQU dma_param1,				09h		; rb1r1		DMA Command Parameter 1
-.EQU dma_len_temp_lo,			0ch		; rb1r4		DMA Length Temp Storage (Low)
-.EQU dma_len_temp_hi,			0dh		; rb1r5		DMA Length Temp Storage (High)
-.EQU dma_block_len_lo,			0eh		; rb1r6		DMA Block Length Low (Predefined)
-.EQU dma_block_len_hi,			0fh		; rb1r7		DMA Block Length High (Predefined)
-
+;=================================== DMA SUBSYSTEM =====================================
+;---------------------------------- Common Registers -----------------------------------
 .EQU dma_status_reg,			10h		; rb2r0		DMA Status/Control
-.EQU dma_xfer_len_lo,			11h		; rb2r1		Active DMA Transfer Length Low
-.EQU dma_xfer_len_hi,			12h		; rb2r2		Active DMA Transfer Length High
 .EQU dma_addr_lo,				13h		; rb2r3		DMA Current Address Low
 .EQU dma_addr_hi,				14h		; rb2r4		DMA Current Address High
-.EQU dma_block_size_lo,			15h		; rb2r5		DMA Block Size Low
-.EQU dma_block_size_hi,			16h		; rb2r6		DMA Block Size High
 .EQU dma_timing_control,		17h		; rb2r7		DMA Timing Control
 
-;---------------------------------- Timer Registers ------------------------------
+;---------------------------------- 8-bit DMA Channel ----------------------------------
+.EQU dma8_block_len_lo,			0eh		; rb1r6		8-bit DMA Block Length (Low)
+.EQU dma8_block_len_hi,			0fh		; rb1r7		8-bit DMA Block Length (High)
+.EQU dma8_xfer_len_lo,			11h		; rb2r1		8-bit DMA Active Transfer Length (Low)
+.EQU dma8_xfer_len_hi,			12h		; rb2r2		8-bit DMA Active Transfer Length (High)
+.EQU dma8_config_temp,			2ch		; 2ch		8-bit DMA Temporary storage
+.EQU dma8_autoreinit_en,		64h		; 2ch.4		8-bit DMA auto-reinit enable
+.EQU dma8_timing_override,		65h		; 2ch.5		8-bit DMA timing override
+
+.EQU dma8_start_pending,		18h		; 23h.0 	8-bit DMA transfer start pending
+.EQU dma8_autoreinit_pause,		1ah		; 23h.2		8-bit DMA auto-reinit paused state
+.EQU dma8_active,				21h		; 24h.1		8-bit DMA transfer in progress
+.EQU dma8_mode,					22h		; 24h.2		8-bit DMA mode
+.EQU dma8_ch1_enable,			78h		; 2fh.0		8-bit DMA enable (1=Enable, 0=Disable)
+
+.EQU acc_dma8_start_pending,	0e0h	; acc.0		8-bit DMA start pending
+.EQU acc_dma8_mode_active,		0e2h	; acc.2		8-bit DMA Active?
+.EQU acc_dma8_autoreinit,		0e4h	; acc.4		8-bit DMA auto-reinit toggle
+.EQU acc_dma8_mode_select,		0e6h	; acc.6		8-bit DMA mode select
+.EQU group_4_dma8_pause,		7bh		; 2fh.3		8-bit DMA channel 1 paused
+
+;--------------------------------- 16-bit DMA Channel ----------------------------------
+.EQU dma16_len_temp_lo,			0ch		; rb1r4		16-bit DMA Length Temp Storage (Low)
+.EQU dma16_len_temp_hi,			0dh		; rb1r5		16-bit DMA Length Temp Storage (High)
+.EQU dma16_block_size_lo,		15h		; rb2r5		16-bit DMA Block Size (Low)
+.EQU dma16_block_size_hi,		16h		; rb2r6		16-bit DMA Block Size (High)
+.EQU dma16_config_temp,			2dh		; 2dh		16-bit DMA Temporary storage
+.EQU dma16_autoreinit_en,		6ch		; 2dh.4		16-bit DMA auto-reinit enable
+.EQU dma16_timing_override,		6dh		; 2dh.5		16-bit DMA alternate addressing
+
+.EQU dma16_start_pending,		19h		; 23h.1 	16-bit DMA transfer start pending
+.EQU dma16_autoreinit_pause,	1bh		; 23h.3		16-bit DMA auto-reinit paused state
+.EQU dma16_active,				23h		; 24h.3		16-bit DMA transfer in progress
+.EQU dma16_mode,				24h		; 24h.4		16-bit DMA mode
+.EQU dma16_ch1_enable,			79h		; 2fh.1		16-bit DMA enable (1=Enable, 0=Disable)
+
+.EQU acc_dma16_start_pending,	0e1h	; acc.1		16-bit DMA start pending
+.EQU acc_dma16_autoreinit,		0e5h	; acc.5		16-bit DMA auto-reinit toggle
+.EQU acc_dma16_mode_select,		0e7h	; acc.7		16-bit DMA mode select
+.EQU group_4_dma16_pause,		7ah		; 2fh.2		16-bit DMA channel 1 paused
+
+;----------------------------------- Timer Subsystem -----------------------------------
 .EQU timer0_counter,			18h		; rb3r0		Timer 0 Counter Storage
 .EQU timer0_tlow,				19h		; rb3r1		Timer 0 Low Byte
 .EQU timer0_thigh,				1ah		; rb3r2		Timer 0 High Byte
+.EQU timer0_auto_reload_en,		1eh		; 23h.6		Timer 0 auto-reload enable
 
-;============================== MEMORY BIT EQUATES ===============================
-;--- Port 1 ---
+;=============================== PORT PIN DEFINITIONS ==================================
+;---------------------------------- Port 1 (90h) ---------------------------------------
 .EQU pin_host_data_rdy,			90h		; p1.0		Host Data Ready
 .EQU pin_dsp_data_rdy,			91h		; p1.1		DSP Data Ready
 .EQU pin_dsp_busy,				92h		; p1.2		DSP Busy Flag
@@ -60,91 +109,66 @@
 .EQU pin_midi_irq,				96h		; p1.6		MIDI IRQ Status
 .EQU pin_timer0_toggle,			97h		; p1.7		Timer 0 Pulse Toggle
 
-;--- Port 2 ---
+;---------------------------------- Port 2 (a0h) ---------------------------------------
 .EQU pin_warmboot_flag,			0a4h	; p2.4		Set during warm boot
 .EQU pin_dma_timing_fault,		0a5h	; p2.5		DMA timing margin alert (CT1745?)
 .EQU pin_periph_dis,			0a6h	; p2.6		Disable external peripherals
 .EQU pin_midi_pwr,				0a7h	; p2.7		MIDI Interface Enable
 
-;============================== DSP CONTROL REGISTERS ============================
+;=============================== DSP CORE REGISTERS ====================================
 .EQU command_byte,				20h		;			Current DSP Command Byte (Host→DSP)
 .EQU rem_xfer_len_lo,			21h		;			Remaining Transfer Length Low
 .EQU rem_xfer_len_hi,			22h		;			Remaining Transfer Length High
-.EQU command_reg,				30h		;			Command Register (Bitmask)
+
+;---------------------------------- Status System --------------------------------------
 .EQU status_reg,				23h		;			Status Register (Bitmask)
+
+;---------------------------------- Control System --------------------------------------
 .EQU auxiliary_reg,				24h		;			Auxiliary Register (Bitmask)
+;---------------------------------- Identification System ------------------------------
 .EQU dsp_dma_id0,				25h		;			DSP/DMA Identification Byte 0
 .EQU dsp_dma_id1,				26h		;			DSP/DMA Identification Byte 1
 
-;---------------------------------- Vector Systems --------------------------------
 .EQU vector_lo,					29h		;			Interrupt Vector Low Byte
-.EQU vector_hi,					2bh		;			Interrupt Vector High Byte
+;---------------------------------- Command System -------------------------------------
+.EQU command_reg,				30h		;			Command Register (Bitmask)
 
-.EQU dma8_config_temp,			2ch		; 2ch		8-bit DMA Temporary storage
-.EQU dma8_autoreinit_en,		64h		; 2ch.4		8-bit DMA auto-reinit enable
-.EQU dma8_timing_override,		65h		; 2ch.5		8-bit DMA timing override
-.EQU dma16_config_temp,			2dh		; 2dh		16-bit DMA Temporary storage
-.EQU dma16_autoreinit_en,		6ch		; 2dh.4		16-bit DMA auto-reinit enable
-.EQU dma16_ch1_altmode,			6dh		; 2dh.5		16-bit DMA alternate addressing
-.EQU dma_control_temp,			2eh		; 2eh		DMA Temporary storage
-
-;---------------------------------- Warm Boot ------------------------------------
+;----------------------------------- Warm Boot System ----------------------------------
 .EQU warmboot_magic1,			31h		;			Warm Boot Signature Byte 1
 .EQU warmboot_magic2,			32h		;			Warm Boot Signature Byte 2
 
-;=============================== SFR BIT EQUATES =================================
-;--- Status Register (23h) ---
-.EQU dma8_start_pending,		18h		; 23h.0 	Pending 8-bit DMA transfer start
-.EQU dma16_start_pending,		19h		; 23h.1 	Pending 16-bit DMA transfer start
-.EQU dma8_autoreinit_pause,		1ah		; 23h.2		8-bit DMA auto-reinit paused state
-.EQU dma16_autoreinit_pause,	1bh		; 23h.3		16-bit DMA auto-reinit paused state
 .EQU mute_enable,				1ch		; 23h.4		Mute control (0 = muted, 1 = unmuted)
 .EQU midi_active,				1dh		; 23h.5		MIDI subsystem active
-.EQU timer0_auto_reload_en,		1eh		; 23h.6		Timer 0 auto-reload enable
 .EQU dma_timing_status,			1fh		; 23h.7		DMA Timing status
 
-;--- Control Register (24h) ---
 .EQU host_cmd_pending,			20h		; 24h.0		Host Command Pending
-.EQU dma8_active,				21h		; 24h.1		DMA transfer in progress
-.EQU dma8_mode,					22h		; 24h.2		8-bit DMA mode
-.EQU dma16_active,				23h		; 24h.3		16-bit DMA transfer in progress
-.EQU dma16_mode,				24h		; 24h.4		16-bit DMA mode
 .EQU midi_timestamp_en,			25h		; 24h.5		MIDI timestamp counter enable
 
-;--- Extended Control Register (2fh) ---
-.EQU dma8_ch1_enable,			78h		; 2fh.0		DMA8 Channel (1=Enable, 0=Disable)
-.EQU dma16_ch1_enable,			79h		; 2fh.1		DMA16 Channel (1=Enable, 0=Disable)
-.EQU group_4_dma16_pause,		7ah		; 2fh.2		16-bit DMA channel 1 paused
-.EQU group_4_dma8_pause,		7bh		; 2fh.3		8-bit DMA channel 1 paused
+;=============================== ADVANCED CONTROLLERS ==================================
+;----------------------------------- DMA Configuration ---------------------------------
+.EQU dma_control_temp,			2eh		; 2eh		DMA Temporary storage
 .EQU dma_safety_override_en,	7ch		; 2fh.4		DMA timing safety override
 .EQU diagnostic_flag,			7dh		; 2fh.5		Diagnostic flag (challenge/resp)
 
-.EQU acc_dma8_start_pending,	0e0h	; acc.0		8-bit DMA start pending
-.EQU acc_dma16_start_pending,	0e1h	; acc.1		16-bit DMA start pending
-.EQU acc_dma8_mode_active,		0e2h	; acc.2		8-bit DMA Active?
-.EQU acc_dma8_autoreinit,		0e4h	; acc.4		8-bit DMA auto-reinit toggle
-.EQU acc_dma16_autoreinit,		0e5h	; acc.5		16-bit DMA auto-reinit toggle
+;----------------------------------- CSP Subsystem -------------------------------------
+.EQU csp_program_id_lo,			08h		; rb1r0		DMA Command Parameter 0
+.EQU csp_program_id_hi,			09h		; rb1r1		DMA Command Parameter 1
 
-.EQU acc_buffer_ready,			0e6h	; acc.6		Buffer/data ready flag
-.EQU acc_addr_hi_or_mode,		0e7h	; acc.7		Address high bit or mode
+.EQU csp_data_port,				80h		; 			CSP Data/Command port
+.EQU csp_status_port,			81h		; 			CSP Status/Handshake port
+.EQU csp_control_port,			82h		; 			CSP Control port
+.EQU csp_program_port,			83h		; 			CSP Program upload port
 
-;---------------------------------- CSP Pins ------------------------------------
-.EQU csp_pin_1,					80h		; 			CSP Unknown Function (Pin 1)
-.EQU csp_pin_2,					81h		; 			CSP Unknown Function (Pin 2)
-.EQU csp_pin_3,					82h		; 			CSP Unknown Function (Pin 3)
-.EQU csp_pin_4,					83h		; 			CSP Unknown Function (Pin 4)
+.EQU csp_lock_count,			2bh		;			Interrupt Vector High Byte
 
 ;============================= INTERRUPT VECTOR TABLE ============================
 ;-------------------- Vector Offsets for Critical Hardware Events ----------------
 .org 0
 RESET:					ljmp	start
-
 .org 3			
 int0_vector:			ljmp	int0_main_handler
-
 .org 0Bh			
 tr0_vector:				ljmp	tr0_main_handler
-
 .org 13h			
 int1_vector:			ljmp	int1_main_handler
 
@@ -156,13 +180,18 @@ int1_vector:			ljmp	int1_main_handler
 ;   - DMA Buffer Underflow Prevention
 ;---------------------------------------------------------------------------------
 int0_main_handler:
-		; Fix: Restore 'push PSW'
-		push 	psw
+		push	psw					; PSW Fix
 		setb	pin_dsp_busy
 		push	acc
 		push	dpl
 		push	dph
 		push	isr_temp_storage
+		; Set DMA8 Mode
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		; ----------
 		mov		dptr,#int0_main_table
 		mov		a,adpcm_state_reg
 		anl		a,#0fh
@@ -175,32 +204,44 @@ int0_main_table:
 
 ;------------------------------- Int0 Group Handlers -----------------------------
 int0_dac_silence:		ljmp	vector_dac_silence		; DAC playback of silence.
-int0_dma_dac_adpcm2:	ljmp	vector_dma_dac_adpcm2	; DAC playback, 2-bit ADPCM
-int0_dma_dac_adpcm2_6:	ljmp	vector_dma_dac_adpcm2_6	; DAC playback, 2.6-bit ADPCM
-int0_dma_dac_adpcm4:	ljmp	vector_dma_dac_adpcm4	; DAC playback, 4-bit ADPCM
+int0_dma_dac_adpcm2:	ljmp	vector_dma_dac_adpcm2	; DAC playback, 2bit ADPCM
+int0_dma_dac_adpcm2_6:	ljmp	vector_dma_dac_adpcm2_6	; DAC playback, 2.6bit ADPCM
+int0_dma_dac_adpcm4:	ljmp	vector_dma_dac_adpcm4	; DAC playback, 4bit ADPCM
 int0_midi_handler:		ljmp	vector_midi_handler		; MIDI Playback
 
 int0_none_handler:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti	
 
 ;------------------------------- INT1 Handler ------------------------------------
 ; Initializes 8-bit/16-bit DMA Transfers
 ;---------------------------------------------------------------------------------
 int1_main_handler:
-		; Fix: Restore 'push PSW'
-		push	psw
+		push	psw					; PSW Fix
 		clr		pin_dsp_busy
 		push	acc
 		push	dpl
 		push	dph
 		push	isr_temp_storage
+		; Clear DMA8 mode
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		; ----------
 		mov		r0,#6
 		movx	a,@r0
 		jnb		acc_dma8_start_pending,X0065
@@ -213,8 +254,7 @@ X006e:	pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;------------------------------- Timer0 Handler ----------------------------------
@@ -234,6 +274,16 @@ X0086:	clr		et0
 		clr		tr0
 X008a:	clr		pin_timer0_toggle
 		setb	pin_timer0_toggle
+		; DMA16 Mode Select
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma16_mode_select
+		movx	@r0,a
+		setb	acc_dma16_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		reti	
 
 ;------------------------------- MIDI Timestamp Counter --------------------------
@@ -244,8 +294,7 @@ X008a:	clr		pin_timer0_toggle
 ;   r7 = Counter MSB
 ;---------------------------------------------------------------------------------
 midi_timestamp_int:
-		; Fix: Restore 'push PSW'
-		push	psw
+		push	psw					; PSW Fix
 		inc		r5
 		cjne	r5,#0,X0098
 		inc		r6
@@ -253,7 +302,7 @@ midi_timestamp_int:
 		inc		r7
 X0098:	mov		tl0,#2fh
 		mov		th0,#0f8h
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 		
 ;------------------------------- 8-bit DMA Transfer Controller -------------------
@@ -308,10 +357,10 @@ X00ec:	jnb		dma8_start_pending,vector_dma8_playback_end
 
 X00f7:	clr		dma8_mode
 		clr		dma8_active
-		mov		a,dma_xfer_len_lo
+		mov		a,dma8_xfer_len_lo
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_xfer_len_hi
+		mov		a,dma8_xfer_len_hi
 		mov		r0,#0ch
 		movx	@r0,a
 		mov		r0,#8
@@ -378,10 +427,10 @@ X015f:	jnb		dma8_autoreinit_pause,vector_dma16_playback_end
 
 X016a:	clr		dma16_mode
 		clr		dma16_active
-		mov		a,dma_block_size_lo
+		mov		a,dma16_block_size_lo
 		mov		r0,#13h
 		movx	@r0,a
-		mov		a,dma_block_size_hi
+		mov		a,dma16_block_size_hi
 		mov		r0,#14h
 		movx	@r0,a
 		mov		r0,#10h
@@ -435,13 +484,21 @@ X01bf:	ljmp	vector_dma_dac_adpcm2_end
 vector_dma_dac_adpcm2_shiftin:
 		ljmp	vector_adpcm_2_decode
 
-X01c5:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X01c5:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X01d1:	movx	a,@r0
-		jnb		acc_buffer_ready,X01d1
+		jnb		acc_dma8_mode_select,X01d1
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -474,7 +531,7 @@ vector_adpcm2_get_data_lo:
 		mov		r0,#0fh
 vector_adpcm2_wait_for_byte:
 		movx	a,@r0
-		jnb		acc_buffer_ready,vector_adpcm2_wait_for_byte
+		jnb		acc_dma8_mode_select,vector_adpcm2_wait_for_byte
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -484,13 +541,21 @@ vector_adpcm_2_decode:
 
 X0204:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X0214:	movx	a,@r0
-		jnb		acc_buffer_ready,X0214
+		jnb		acc_dma8_mode_select,X0214
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -506,12 +571,19 @@ X0214:	movx	a,@r0
 
 vector_dma_dac_adpcm2_end:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;------------------------------- 4-bit ADPCM Decoder -----------------------------
@@ -550,13 +622,21 @@ X0268:	ljmp	vector_dma_dac_adpcm4_end
 vector_dma_dac_adpcm4_shiftin:
 		ljmp	vector_adpcm_4_decode
 
-X026e:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X026e:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X027a:	movx	a,@r0
-		jnb		acc_buffer_ready,X027a
+		jnb		acc_dma8_mode_select,X027a
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -588,7 +668,7 @@ vector_adpcm4_get_data_lo:
 		; ----------
 		mov		r0,#0fh
 X029f:	movx	a,@r0
-		jnb		acc_buffer_ready,X029f
+		jnb		acc_dma8_mode_select,X029f
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -598,13 +678,21 @@ vector_adpcm_4_decode:
 
 X02ad:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X02bd:	movx	a,@r0
-		jnb		acc_buffer_ready,X02bd
+		jnb		acc_dma8_mode_select,X02bd
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -619,12 +707,19 @@ X02bd:	movx	a,@r0
 		movx	@r0,a
 vector_dma_dac_adpcm4_end:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;------------------------------- 2.6-bit ADPCM Decoder ---------------------------
@@ -666,9 +761,17 @@ X0317:	dec		rem_xfer_len_lo
 		mov		r3,#3
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X0321:	movx	a,@r0
-		jnb		acc_buffer_ready,X0321
+		jnb		acc_dma8_mode_select,X0321
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -676,8 +779,8 @@ vector_adpcm_2_6_decode:
 		lcall	adpcm_2_6_decode
 		ljmp	vector_dma_dac_adpcm2_6_end
 
-X032f:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X032f:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		; DMA16 initialization
@@ -690,7 +793,7 @@ X032f:	mov		rem_xfer_len_lo,dma_block_len_lo
 		; ----------
 		mov		r0,#0fh
 X033b:	movx	a,@r0
-		jnb		acc_buffer_ready,X033b
+		jnb		acc_dma8_mode_select,X033b
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -707,13 +810,21 @@ X033b:	movx	a,@r0
 
 X0354:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X0364:	movx	a,@r0
-		jnb		acc_buffer_ready,X0364
+		jnb		acc_dma8_mode_select,X0364
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -728,12 +839,19 @@ X0364:	movx	a,@r0
 		movx	@r0,a
 vector_dma_dac_adpcm2_6_end:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;------------------------------- Digital Silence Generator -----------------------
@@ -769,12 +887,19 @@ vector_dac_silence_get_data_lo:
 		dec		rem_xfer_len_lo
 vector_dac_silence_end:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;------------------------------- MIDI Stream Processor ---------------------------
@@ -793,12 +918,19 @@ X03c8:	mov		r0,#19h
 		movx	@r0,a
 		inc		r7
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		pop		isr_temp_storage
 		pop		dph
 		pop		dpl
 		pop		acc
-		; Fix: Restore 'pop PSW'
-		pop		psw
+		pop		psw					; PSW Fix
 		reti
 
 ;============================= SYSTEM INITIALIZATION MANAGER =====================
@@ -810,25 +942,32 @@ X03c8:	mov		r0,#19h
 ;---------------------------------------------------------------------------------
 start:
 		setb	pin_dsp_busy
+		; Set DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		clr		ea
 		setb	pin_timer0_toggle
 		setb	dma8_ch1_enable
 		setb	dma16_ch1_enable
 		clr		pin_coldboot_done
 		clr		pin_periph_dis
-		mov		sp,#0c0h
+		mov		sp,#init_stack
 		clr		pin_dma_req
 		setb	pin_midi_pwr
-		mov		scon,#42h
-		mov		th1,#0fch
-		mov		tl1,#0fch
-		mov		tmod,#21h
-		mov		pcon,#80h
+		mov		scon,#init_scon
+		mov		th1,#init_timer1_byte_hi
+		mov		tl1,#init_timer1_byte_lo
+		mov		tmod,#init_tmod
+		mov		pcon,#init_pcon
 		setb	tr1
 		setb	ren
 		setb	it0
-		; Fix: Restored to function like in 4.13 and below.
-		; 4.16 uses: clr it1 (which is incorrect)
+		; 4.17 uses: setb it1 (which is correct)
 		setb	it1
 		mov		a,#34h
 		cjne	a,warmboot_magic1,cold_boot
@@ -855,7 +994,7 @@ cold_boot:
 		mov		a,#0f8h
 		movx	@r0,a
 		mov		r0,#5				;
-		mov		a,#0c3h				; Added in 4.13
+		mov		a,#0c3h				; Added in 4.11
 		movx	@r0,a				;
 		mov		r0,#0eh
 		mov		a,#5
@@ -878,8 +1017,8 @@ cold_boot:
 		mov		r7,#0
 		mov		dsp_dma_id0,#0aah
 		mov		dsp_dma_id1,#96h
-		mov		dma_block_len_lo,#0ffh
-		mov		dma_block_len_hi,#7
+		mov		dma8_block_len_lo,#0ffh
+		mov		dma8_block_len_hi,#7
 		mov		37h,#38h
 		mov		status_reg,#0
 
@@ -892,12 +1031,12 @@ cold_boot:
 warm_boot:
 		mov		r0,#5
 		movx	a,@r0
-		orl		a,#3
+		setb	acc_dma16_start_pending
 		movx	@r0,a
 		mov		adpcm_state_reg,#0
 		mov		dma8_config_temp,#0
 		mov		dma16_config_temp,#0
-		mov		vector_hi,#0
+		mov		csp_lock_count,#0
 		mov		auxiliary_reg,#0
 		clr		pin_dma_timing_fault
 		setb	pin_warmboot_flag
@@ -924,11 +1063,11 @@ check_cmd:
 
 wait_for_cmd:
 		clr		pin_dsp_busy
-		; Clear Buffer
+		; Clear DMA8 mode
 		push	acc
 		mov		r0,#5
 		movx	a,@r0
-		clr		acc_buffer_ready
+		clr		acc_dma8_mode_select
 		movx	@r0,a
 		pop		acc
 		; ----------
@@ -937,6 +1076,14 @@ wait_for_cmd:
 		lcall	midi_uart_init
 X0495:	lcall	midi_io_handler
 X0498:	setb	pin_dsp_busy
+		; Set DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		jnb		pin_dsp_data_rdy,wait_for_cmd
 X049d:	clr		ea
 		clr		host_cmd_pending
@@ -960,9 +1107,17 @@ X049d:	clr		ea
 ;---------------------------------------------------------------------------------
 dispatch_cmd:
 		setb	ea
+		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		mov		dptr,#table_major_cmds
 		movc	a,@a+dptr
-		clr		pin_dsp_busy				   
 		jmp		@a+dptr
 
 		sjmp	check_cmd
@@ -970,7 +1125,7 @@ dispatch_cmd:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  00h    | vector_cmdg_status			(12h)
+;   0   |  00h    | vector_cmdg_csp				(12h)
 ;   1   |  10h    | vector_cmdg_dac1			(15h)
 ;   2   |  20h    | vector_cmdg_rec				(1eh)
 ;   3   |  30h    | vector_cmdg_midi			(21h)
@@ -993,20 +1148,20 @@ table_major_cmds:
 		.db	2ah,1bh,10h,36h,33h,30h,2dh,24h
 
 ;------------------------------- Command Group Handlers --------------------------
-vector_cmdg_none:      sjmp check_cmd			; Groups 5,6,A (Invalid)
-vector_cmdg_status:    ljmp cmdg_status			; Group 0: Status commands
-vector_cmdg_dac1:      ljmp cmdg_dma_dac1		; Group 1: Primary DMA audio
-vector_cmdg_dac2:      ljmp cmdg_dma_dac2		; Group 7: Secondary DMA audio 
-vector_cmdg_hs:        ljmp cmdg_hs				; Group 9: High-speed transfers
-vector_cmdg_rec:       ljmp cmdg_rec			; Group 2: Recording control
-vector_cmdg_midi:      ljmp cmdg_midi			; Group 3: MIDI operations
-vector_cmdg_aux:       ljmp cmdg_aux			; Group F: Auxiliary commands
-vector_cmdg_setup:     ljmp cmdg_setup			; Group 4: DSP configuration
-vector_cmdg_silence:   ljmp cmdg_silence		; Group 8: Silence generation
-vector_cmdg_ident:     ljmp cmdg_ident			; Group E: DSP identification
-vector_cmdg_misc:      ljmp cmdg_misc			; Group D: Miscellaneous
-vector_cmd_dma8:       ljmp cmd_dma8			; Group C: 8-bit DMA control
-vector_cmd_dma16:      ljmp cmd_dma16			; Group B: 16-bit DMA control
+vector_cmdg_none:		sjmp check_cmd			; Groups 5,6,A (Invalid)
+vector_cmdg_csp:		ljmp cmdg_csp			; Group 0: CSP commands
+vector_cmdg_dac1:		ljmp cmdg_dma_dac1		; Group 1: Primary DMA audio
+vector_cmdg_dac2:		ljmp cmdg_dma_dac2		; Group 7: Secondary DMA audio 
+vector_cmdg_hs:			ljmp cmdg_hs			; Group 9: High-speed transfers
+vector_cmdg_rec:		ljmp cmdg_rec			; Group 2: Recording control
+vector_cmdg_midi:		ljmp cmdg_midi			; Group 3: MIDI operations
+vector_cmdg_aux:		ljmp cmdg_aux			; Group F: Auxiliary commands
+vector_cmdg_setup:		ljmp cmdg_setup			; Group 4: DSP configuration
+vector_cmdg_silence:	ljmp cmdg_silence		; Group 8: Silence generation
+vector_cmdg_ident:		ljmp cmdg_ident			; Group E: DSP identification
+vector_cmdg_misc:		ljmp cmdg_misc			; Group D: Miscellaneous
+vector_cmd_dma8:		ljmp cmd_dma8			; Group C: 8-bit DMA control
+vector_cmd_dma16:		ljmp cmd_dma16			; Group B: 16-bit DMA control
 ;---------------------------------------------------------------------------------
 
 ;============================= HOST-DRIVEN DMA CONFIGURATOR ======================  
@@ -1036,9 +1191,9 @@ X051a:	jnb		dma8_mode,X0535
 		clr		dma8_mode
 		lcall	dsp_input_data
 		lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		clr		dma8_ch1_enable
 		setb	ex1
@@ -1066,9 +1221,9 @@ X0559:	lcall	dsp_input_data
 		clr		acc_dma8_autoreinit
 		jnb		dma8_autoreinit_en,X0567
 		setb	acc_dma8_autoreinit
-X0567:	setb	acc_buffer_ready
+X0567:	setb	acc_dma8_mode_select
 		jnb		dma8_timing_override,X056e
-		clr		acc_buffer_ready
+		clr		acc_dma8_mode_select
 X056e:	mov		r0,#4
 		movx	@r0,a
 		clr		ea
@@ -1079,11 +1234,11 @@ X056e:	mov		r0,#4
 		movx	@r0,a
 		setb	ea
 		lcall	dsp_input_data
-		mov		dma_block_len_lo,a
+		mov		dma8_block_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_block_len_hi,a
+		mov		dma8_block_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
 		setb	dma_safety_override_en
@@ -1132,9 +1287,9 @@ X05d0:	jnb		dma16_mode,X05eb
 		clr		dma16_mode
 		lcall	dsp_input_data
 		lcall	dsp_input_data
-		mov		dma_block_size_lo,a
+		mov		dma16_block_size_lo,a
 		lcall	dsp_input_data
-		mov		dma_block_size_hi,a
+		mov		dma16_block_size_hi,a
 		setb	dma16_active
 		clr		dma16_ch1_enable
 		setb	ex1
@@ -1162,17 +1317,17 @@ X060f:	lcall	dsp_input_data
 		clr		acc_dma16_autoreinit
 		jnb		dma16_autoreinit_en,X061d
 		setb	acc_dma16_autoreinit
-X061d:	setb	acc_addr_hi_or_mode
-		jnb		dma16_ch1_altmode,X0624
-		clr		acc_addr_hi_or_mode
+X061d:	setb	acc_dma16_mode_select
+		jnb		dma16_timing_override,X0624
+		clr		acc_dma16_mode_select
 X0624:	mov		r0,#4
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_len_temp_lo,a
+		mov		dma16_len_temp_lo,a
 		mov		r0,#13h
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_len_temp_hi,a
+		mov		dma16_len_temp_hi,a
 		mov		r0,#14h
 		movx	@r0,a
 		setb	dma_safety_override_en
@@ -1195,13 +1350,13 @@ X0624:	mov		r0,#4
 		setb	ea
 X0655:	ljmp	check_cmd
 
-;============================== STATUS COMMAND HANDLER ==========================
-;------------------------------- Group 0: Status Control -------------------------
+;============================== CSP COMMAND HANDLER ==========================
+;------------------------------- Group 0: CSP Control -------------------------
 ; Processes status/configuration commands (00h-0Fh)
-; Uses jump table at table_status_cmds for subcommand dispatch
+; Uses jump table at table_csp_cmds for subcommand dispatch
 ;---------------------------------------------------------------------------------
-cmdg_status:
-		mov		dptr,#table_status_cmds
+cmdg_csp:
+		mov		dptr,#table_csp_cmds
 		mov		a,command_byte
 		anl		a,#0fh
 		movc	a,@a+dptr
@@ -1210,120 +1365,126 @@ cmdg_status:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  00h    | cmd_none					(75h)
-;   1   |  01h    | cmd_vector_init				(0f8h)
-;   2   |  02h    | cmd_port_config				(10h)
-;   3   |  03h    | cmd_read_port80				(43h)
-;   4   |  04h    | cmd_write_port82			(4ch)
-;   5   |  05h    | cmd_dual_port_write			(34h)
-;   6   |  06h    | cmd_inc_vector_high			(55h)
-;   7   |  07h    | cmd_dec_vector_high			(5ah)
+;   0   |  00h    | cmd_0_none					(75h)
+;   1   |  01h    | cmd_csp_upload				(0f8h)
+;   2   |  02h    | cmd_csp_init				(10h)
+;   3   |  03h    | cmd_csp_read_data			(43h)
+;   4   |  04h    | cmd_csp_control_mode		(4ch)
+;   5   |  05h    | cmd_csp_dual_write			(34h)
+;   6   |  06h    | cmd_csp_lock_inc			(55h)
+;   7   |  07h    | cmd_csp_lock_dec			(5ah)
 ; ---------------------------------------------------
-;   8   |  08h    | cmd_read_port82				(6ch)
-;   9   |  09h    | cmd_read_rb1_regs			(91h)
-;  10   |  0Ah    | cmd_read_vector_high		(67h)
-;  11   |  0Bh    | cmd_block_write				(9dh)
-;  12   |  0Ch    | cmd_block_read				(0c8h)
-;  13   |  0Dh    | cmd_none					(75h)
+;   8   |  08h    | cmd_csp_version				(6ch)
+;   9   |  09h    | cmd_csp_program_id			(91h)
+;  10   |  0Ah    | cmd_csp_program_lock		(67h)
+;  11   |  0Bh    | cmd_csp_block_write			(9dh)
+;  12   |  0Ch    | cmd_csp_block_read			(0c8h)
+;  13   |  0Dh    | cmd_0_none					(75h)
 ;  14   |  0Eh    | cmd_xbus_write				(78h)
 ;  15   |  0Fh    | cmd_xbus_read				(86h)
 ; ----------------------------------------------------
-table_status_cmds:
+table_csp_cmds:
 		.db	75h,0f8h,10h,43h,4ch,34h,55h,5ah
 		.db	6ch,91h,67h,9dh,0c8h,75h,78h,86h
 
-;=============================== PORT CONFIGURATION ==============================
-;------------------------------- [02h] Port Configuration Setup ------------------
-; Initializes I/O ports 80h-81h with handshake protocol
-; Input: [Port80_Init_Value]
-; Security: Uses 0F2h signature verification
+;=============================== CSP PORT CONFIGURATION ==============================
+;------------------------------- [02h] CSP Initialize ------------------------------
+; Sets up CSP communication ports with handshake
+; Uses ports 80h (data), 81h (status), F2h signature
 ;---------------------------------------------------------------------------------
-cmd_02:
+cmd_csp_init:
 		lcall	dsp_input_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0f2h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X067e:	mov		r0,#80h
+csp_init_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		jb		pin_dsp_data_rdy,X0692
-		cjne	a,dma_control_temp,X067e
+		jb		pin_dsp_data_rdy,csp_init_done
+		cjne	a,dma_control_temp,csp_init_wait
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#80h
+		orl		a,#csp_data_port
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
-X0692:	ljmp	cmdg_0_exit
+csp_init_done:
+		ljmp	cmdg_0_exit
 
-;------------------------------- [05h] Dual Port Write ---------------------------
-; Writes values to ports 80h/81h simultaneously
-; Input: [Value80][Value81]
+;------------------------------- [05h] CSP Dual Write -------------------------------
+; Writes to both CSP data and status ports
+; Input: Byte1 → 80h (data), Byte2 → 81h (status)
 ;---------------------------------------------------------------------------------
-cmd_05:
+cmd_csp_dual_write:
 		lcall	dsp_input_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
 
-;=============================== PORT OPERATIONS =================================
-;------------------------------- [03h] Read Port 80h Status ----------------------
-; Output: [Port80_Value]
+;=============================== CSP PORT OPERATIONS ================================
+;------------------------------- [03h] CSP Read Data --------------------------------
+; Reads current value from CSP data port (80h)
+; Output: Returns byte from CSP data port
 ;---------------------------------------------------------------------------------
-cmd_03:
-		mov		r0,#80h
+cmd_csp_read_data:
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	cmdg_0_exit
 
-;------------------------------- [04h] Write Port 82h Config ----------------------
-; Programs extended configuration register
-; Input: [Config_Value]
+;------------------------------- [04h] CSP Set Mode ---------------------------------
+; Configures CSP operation mode
+; Input: Control byte → 82h (control port)
 ;---------------------------------------------------------------------------------
-cmd_04:
+cmd_csp_control_mode:
 		lcall	dsp_input_data
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
 
-;============================= VECTOR MANAGEMENT =================================
-;------------------------------- [06h] Increment Vector High ---------------------
-; Increases vector_hi register value
+;=============================== CSP LOCK MANAGEMENT ================================
+;------------------------------- [06h] CSP Lock Increment ---------------------------
+; Increases program lock count - prevents uploads
+; Modifies: csp_lock_count (8-bit, no overflow check)
 ;---------------------------------------------------------------------------------
-cmd_06:
-		inc		vector_hi
+cmd_csp_lock_inc:
+		inc		csp_lock_count
 		ljmp	cmdg_0_exit
 
-;------------------------------- [07h] Decrement Vector High ---------------------
-; Decreases vector_hi register value
+;------------------------------- [07h] CSP Lock Decrement ---------------------------
+; Decreases program lock count - enable uploads
 ; Failsafe: Won't decrement below 00h
 ;---------------------------------------------------------------------------------
-cmd_07:
-		mov		a,vector_hi
-		cjne	a,#0,X06c3
+cmd_csp_lock_dec:
+		mov		a,csp_lock_count
+		cjne	a,#0,csp_dec_valid
 		ljmp	cmdg_0_exit
 
-X06c3:	dec		vector_hi
+csp_dec_valid:
+		dec		csp_lock_count
 		ljmp	cmdg_0_exit
 
-;------------------------------- [0Ah] Read Vector High --------------------------
-; Output: [vector_high_Value]
+;------------------------------- [0Ah] CSP Get Lock Count ---------------------------
+; Output: Current lock count value
 ;---------------------------------------------------------------------------------
-cmd_0A:
-		mov		a,vector_hi
+cmd_csp_program_lock:
+		mov		a,csp_lock_count
 		lcall	dsp_output_data
 
-;------------------------------- [08h] Read Port 82h Config ----------------------
-; Output: [Port82h_Value]
+;=============================== CSP VERSION CONTROL ================================
+;------------------------------- [08h] CSP Get Version ------------------------------
+; Reads CSP chip version from X-Bus
+; Output: Returns version byte from fixed X-Bus location
 ;---------------------------------------------------------------------------------
-cmd_08:
-		mov		r0,#82h
+cmd_csp_version:
+		mov		r0,#csp_control_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		ljmp	cmdg_0_exit
@@ -1332,17 +1493,16 @@ cmd_08:
 ;------------------------------- [00h/0Dh] No Operation --------------------------
 ; Placeholder for unimplemented commands
 ;---------------------------------------------------------------------------------
-cmd_00:
-cmd_0D:
+cmd_0_none:
 		ljmp	wait_for_cmd
 
-;=============================== X-BUS OPERATIONS ================================
-;------------------------------- [0Eh] X-Bus Write -------------------------------
-; Writes value to arbitrary X-Bus address
-; Input: [Address][Value]
-; Security: Full bus access granted
+;=============================== X-BUS OPERATIONS ===================================
+;------------------------------- [0Eh] X-Bus Write ----------------------------------
+; Writes to any X-Bus address
+; Input: [Address][Value] → Full bus access
+; Security: No validation performed
 ;---------------------------------------------------------------------------------
-cmd_0E:
+cmd_xbus_write:
 		lcall	dsp_input_data
 		mov		b,a
 		lcall	dsp_input_data
@@ -1350,12 +1510,11 @@ cmd_0E:
 		movx	@r0,a
 		ljmp	wait_for_cmd
 
-;------------------------------- [0Fh] X-Bus Read --------------------------------
-; Reads value from X-Bus address
-; Input: [Address]
-; Output: [Value]
+;------------------------------- [0Fh] X-Bus Read -----------------------------------
+; Reads from any X-Bus address
+; Input: [Address] → Returns value
 ;---------------------------------------------------------------------------------
-cmd_0F:
+cmd_xbus_read:
 		lcall	dsp_input_data
 		mov		r0,a
 		movx	a,@r0
@@ -1363,155 +1522,167 @@ cmd_0F:
 cmdg_0_exit:
 		ljmp	wait_for_cmd
 
-;=============================== REGISTER ACCESS =================================
-;------------------------------- [09h] Read RB1 Registers ------------------------
-; Output: [dma_param0][dma_param1]
+;=============================== CSP PROGRAM ID ACCESS ==============================
+;------------------------------- [09h] Get CSP Program ID --------------------------
+; Output: [Program_ID_Low][Program_ID_High] 
+; Returns last 2 bytes of uploaded CSP program
 ;---------------------------------------------------------------------------------
-cmd_09:
-		mov		a,dma_param0
+cmd_csp_program_id:
+		mov		a,csp_program_id_lo
 		lcall	dsp_output_data
-		mov		a,dma_param1
+		mov		a,csp_program_id_hi
 		lcall	dsp_output_data
 		sjmp	cmdg_0_exit
 
-;=============================== BLOCK TRANSFERS =================================
-;------------------------------- [0Bh] Block Write -------------------------------
-; Writes data pairs to ports 80h/81h
-; Input: [Length][Data...]
-; Protocol: Uses C0h handshake signature
+;=============================== CSP BLOCK TRANSFERS ================================
+;------------------------------- [0Bh] CSP Block Write ------------------------------
+; Sends data block to CSP program 
+; Input: [Length][Data_Pairs...] → (Low,High) words
+; Uses C0h handshake protocol on status port
 ;---------------------------------------------------------------------------------
-cmd_0B:
+cmd_csp_block_write:
 		lcall	dsp_input_data
 		mov		rem_xfer_len_lo,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0c0h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X070d:	mov		r0,#80h
+csp_block_write_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,dma_control_temp,X070d
-X0713:	lcall	dsp_input_data
-		mov		r0,#80h
+		cjne	a,dma_control_temp,csp_block_write_wait
+csp_block_write_loop:
+		lcall	dsp_input_data
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		clr		a
-		cjne	a,rem_xfer_len_lo,X0725
+		cjne	a,rem_xfer_len_lo,csp_block_write_next
 		sjmp	cmdg_0_exit
 
-X0725:	dec		rem_xfer_len_lo
-		sjmp	X0713
+csp_block_write_next:
+		dec		rem_xfer_len_lo
+		sjmp	csp_block_write_loop
 
-;------------------------------- [0Ch] Block Read --------------------------------
-; Reads data pairs from ports 80h/81h
-; Input: [Length]
-; Output: [Data...]
-; Protocol: Uses C1h handshake signature
+;------------------------------- [0Ch] CSP Block Read -------------------------------
+; Receives data block from CSP program
+; Input: [Length] → Returns [Data_Pairs...] (Low,High)
+; Uses C1h handshake protocol on status port
 ;---------------------------------------------------------------------------------
-cmd_0C:
+cmd_csp_block_read:
 		lcall	dsp_input_data
 		mov		rem_xfer_len_lo,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0c1h
 		mov		dma_control_temp,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X0738:	mov		r0,#80h
+csp_block_read_wait:
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,dma_control_temp,X0738
+		cjne	a,dma_control_temp,csp_block_read_wait
 		mov		a,dma_control_temp
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
-X0743:	mov		r0,#80h
+csp_block_read_loop:
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	a,@r0
 		lcall	dsp_output_data
 		clr		a
-		cjne	a,rem_xfer_len_lo,X0755
+		cjne	a,rem_xfer_len_lo,csp_block_read_next
 		sjmp	cmdg_0_exit
 
-X0755:	dec		rem_xfer_len_lo
-		sjmp	X0743
+csp_block_read_next:
+		dec		rem_xfer_len_lo
+		sjmp	csp_block_read_loop
 
-;============================= SYSTEM INITIALIZATION =============================
-;------------------------------- [01h] Vector System Init ------------------------
-; Initializes interrupt vectors with checksum
-; Input: [Length][Checksum][dma_param0][dma_param1]
-; Security: Only works when vector_hi == 0
-; Output: 00h=Success, FFh=Failure
+;=============================== CSP PROGRAM MANAGEMENT =============================
+;------------------------------- [01h] CSP Upload Program ---------------------------
+; Uploads new CSP program with checksum
+; Input: [Length][Checksum][Program ID] → 83h (program port)
+; Security: Lock count must be 0, uses AA/FF status codes
 ;---------------------------------------------------------------------------------
-cmd_01:
-		mov		a,vector_hi
+cmd_csp_upload:
+		mov		a,csp_lock_count
 		cjne	a,#0,cmdg_0_exit
 		lcall	dsp_output_data
 		mov		a,#0
 		mov		33h,a
 		mov		34h,a
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		lcall	dsp_input_data
 		clr		c
 		subb	a,#4
 		mov		rem_xfer_len_lo,a
 		lcall	dsp_input_data
-		jnc		X077b
+		jnc		csp_upload_calc_len
 		dec		a
-X077b:	mov		rem_xfer_len_hi,a
+csp_upload_calc_len:
+		mov		rem_xfer_len_hi,a
 		mov		a,#8ch
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#8ah
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
-X0787:	lcall	dsp_input_data
-		mov		r0,#83h
+csp_upload_loop:
+		lcall	dsp_input_data
+		mov		r0,#csp_program_port
 		movx	@r0,a
 		add		a,33h
 		mov		33h,a
-		jnc		X0795
+		jnc		csp_upload_next
 		inc		34h
-X0795:	clr		a
-		cjne	a,rem_xfer_len_lo,X07d9
-		cjne	a,rem_xfer_len_hi,X07d7
+csp_upload_next:
+		clr		a
+		cjne	a,rem_xfer_len_lo,csp_upload_dec_lo
+		cjne	a,rem_xfer_len_hi,csp_upload_dec_hi
 		lcall	dsp_input_data
 		mov		35h,a
 		lcall	dsp_input_data
 		mov		36h,a
 		mov		a,#0
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#70h
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,33h
-		cjne	a,35h,X07c5
+		cjne	a,35h,csp_upload_fail
 		mov		a,34h
-		cjne	a,36h,X07c5
-		mov		r0,#80h
+		cjne	a,36h,csp_upload_fail
+		mov		r0,#csp_data_port
 		movx	a,@r0
-		cjne	a,#0aah,X07c7
+		cjne	a,#0aah,csp_upload_fail_code
 		mov		a,#0
-		ljmp	X07c7
+		ljmp	csp_upload_fail_code
 
-X07c5:	mov		a,#0ffh
-X07c7:	lcall	dsp_output_data
+csp_upload_fail:
+		mov		a,#0ffh
+csp_upload_fail_code:
+		lcall	dsp_output_data
 		lcall	dsp_input_data
-		mov		dma_param0,a
+		mov		csp_program_id_lo,a
 		lcall	dsp_input_data
-		mov		dma_param1,a
+		mov		csp_program_id_hi,a
 		ljmp	cmdg_0_exit
 
-X07d7:	dec		rem_xfer_len_hi
-X07d9:	dec		rem_xfer_len_lo
-		sjmp	X0787
+csp_upload_dec_hi:
+		dec		rem_xfer_len_hi
+csp_upload_dec_lo:
+		dec		rem_xfer_len_lo
+		sjmp	csp_upload_loop
 
 ;============================= DSP RUNTIME CONFIGURATION =========================
 ;------------- Group 4: Samplerate, DMA Timing, and Peripheral Control -----------
@@ -1723,13 +1894,13 @@ X088f:	jnb		pin_dsp_data_rdy,X088f
 ; [48h] Set DMA Block Size (Index 8)
 ; Configures transfer block size
 ; Input: 16-bit block size
-; Affects: dma_block_len_lo/hi registers
+; Affects: dma8_block_len_lo/hi registers
 ;---------------------------------------------------------------------------------
 cmd_set_dma_block_size:
 		lcall	dsp_input_data
-		mov		dma_block_len_lo,a
+		mov		dma8_block_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_block_len_hi,a
+		mov		dma8_block_len_hi,a
 		ljmp	cmdg_4_exit
 
 cmdg_4_exit:
@@ -2069,7 +2240,6 @@ cmd_F4:
 ; Affects: Port 0 or CSP diagnostic subsystem
 ;-----------------------------------------------------------------------------------
 cmd_mailbox_reset_or_diag:
-		; Restored functionality.
 		jb		command_byte_2,X0a85
 		mov		a,#0
 		mov		r0,#0
@@ -2078,7 +2248,7 @@ cmd_mailbox_reset_or_diag:
 		movx	@r0,a
 		ljmp	cmdg_f_exit
 
-		; Impossible call in 4.13 and 4.16, restored functionality.
+		; Impossible call in 4.16 and lower, restored functionality.
 X0a85:	lcall	X1233
 		ljmp	cmdg_f_exit
 
@@ -2111,6 +2281,14 @@ cmd_F0:
 ;-----------------------------------------------------------------------------------
 cmdg_f_exit:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		ljmp	check_cmd
 
 ;============================= MIDI SYSTEM DATA =====================================
@@ -2169,9 +2347,9 @@ cmd_midi_read_write_poll:
 skip_midi_timestamp_setup:
 		mov		a,sbuf
 		clr		ri
-		mov		r1,#40h
-		mov		r2,#40h
-		mov		r4,#80h
+		mov		r1,#midi_buffer_pt_write
+		mov		r2,#midi_buffer_pt_read
+		mov		r4,#midi_buffer_size
 		ljmp	midi_check_for_input_data
 
 ;------------------------------- MIDI Polling Loop ----------------------------------
@@ -2204,7 +2382,7 @@ midi_write_poll:
 		mov		sbuf,a
 midi_check_for_input_data:
 		jb		ri,midi_has_input_data
-		cjne	r4,#80h,midi_buffer_status_check
+		cjne	r4,#midi_buffer_size,midi_buffer_status_check
 		sjmp	midi_poll_loop
 
 midi_buffer_status_check:
@@ -2216,15 +2394,15 @@ midi_has_input_data:
 		jnb		command_byte_1,midi_read_no_timestamp
 		clr		tr0
 		mov		a,r5
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		mov		a,r6
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		mov		a,r7
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		setb	tr0
 midi_read_no_timestamp:
 		mov		a,sbuf
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		clr		ri
 		sjmp	midi_poll_loop
 
@@ -2235,8 +2413,8 @@ midi_flush_buffer_to_host:
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#0c0h,midi_nowrap_readbuffer
-		mov		r2,#40h
+		cjne	r2,#midi_buffer_end,midi_nowrap_readbuffer
+		mov		r2,#midi_buffer_pt_read
 midi_nowrap_readbuffer:
 		mov		r0,#0
 		nop	
@@ -2255,7 +2433,7 @@ midi_skip_interrupt:
 		sjmp	midi_poll_loop
 
 ;------------------------------- Buffer Write Operation ----------------------------
-midi_buffer_write:
+midi_buffer_store_data:
 		cjne	r4,#0,midi_store_read_data_to_buffer
 		ljmp	midi_ready_to_receive_more
 
@@ -2263,10 +2441,10 @@ midi_store_read_data_to_buffer:
 		mov		@r1,a
 		inc		r1
 		dec		r4
-		cjne	r1,#0c0h,midi_ready_to_receive_more
-		mov		r1,#40h
+		cjne	r1,#midi_buffer_end,midi_ready_to_receive_more
+		mov		r1,#midi_buffer_pt_write
 midi_ready_to_receive_more:
-		ret	
+		ret
 
 ;============================= MIDI UART INITIALIZATION ============================
 ;------------------------------- MIDI UART Setup -----------------------------------
@@ -2288,12 +2466,12 @@ midi_uart_init:
 		setb	midi_active
 		mov		a,sbuf
 		clr		ri
-		mov		r1,#40h
-		mov		r2,#40h
-		mov		r4,#80h
+		mov		r1,#midi_buffer_pt_write
+		mov		r2,#midi_buffer_pt_read
+		mov		r4,#midi_buffer_size
 		mov		warmboot_magic1,#34h
 		mov		warmboot_magic2,#12h
-		ret	
+		ret
 
 ;============================= MIDI I/O MANAGEMENT =================================
 ;------------------------------- MIDI I/O Handler ----------------------------------
@@ -2313,15 +2491,31 @@ midi_io_handler:
 		ljmp	X0c2a
 
 X0bdc:	clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		jb		pin_dsp_data_rdy,X0c09
 		jnb		pin_midi_irq,X0bfe
 		jb		ri,X0c12
-		cjne	r4,#80h,midi_buffer_process
+		cjne	r4,#midi_buffer_size,midi_buffer_process
 X0bea:	jnb		ti,X0bdc
 		mov		r0,#2
 		movx	a,@r0
 		setb	pin_dsp_busy
-		jnb		acc_buffer_ready,X0bdc
+		; Set DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
+		jnb		acc_dma8_mode_select,X0bdc
 		mov		r0,#1
 		movx	a,@r0
 		clr		ti
@@ -2333,7 +2527,7 @@ X0bfe:	mov		r0,#1
 		clr		midi_active
 		mov		warmboot_magic1,#0
 		mov		warmboot_magic2,#0
-X0c09:	ret	
+X0c09:	ret
 
 ;============================= MIDI BUFFER MANAGEMENT ==============================
 ;------------------------------- Buffer Processing ---------------------------------
@@ -2346,11 +2540,11 @@ X0c09:	ret
 midi_buffer_process:
 		mov		r0,#2
 		movx	a,@r0
-		jb		acc_addr_hi_or_mode,X0c1b
+		jb		acc_dma16_mode_select,X0c1b
 		sjmp	X0bea
 
 X0c12:	mov		a,sbuf
-		lcall	midi_buffer_write
+		lcall	midi_buffer_store_data
 		clr		ri
 		sjmp	X0bea
 
@@ -2359,13 +2553,21 @@ X0c1b:	mov		a,r2
 		mov		a,@r0
 		inc		r2
 		inc		r4
-		cjne	r2,#0c0h,X0c25
-		mov		r2,#40h
+		cjne	r2,#midi_buffer_end,X0c25
+		mov		r2,#midi_buffer_pt_read
 X0c25:	mov		r0,#2
 		movx	@r0,a
 		sjmp	X0bea
 
 X0c2a:	clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		jb		pin_dsp_data_rdy,X0c61
 		jnb		pin_midi_irq,X0c56
 		jnb		diagnostic_flag,X0c38
@@ -2373,10 +2575,18 @@ X0c2a:	clr		pin_dsp_busy
 X0c38:	mov		r0,#2
 		movx	a,@r0
 		setb	pin_dsp_busy
-		jnb		acc_addr_hi_or_mode,X0c2a
+		; Set DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
+		jnb		acc_dma16_mode_select,X0c2a
 		mov		r0,#2
 		movx	a,@r0
-		jnb		acc_buffer_ready,X0c2a
+		jnb		acc_dma8_mode_select,X0c2a
 		mov		r0,#1
 		movx	a,@r0
 		clr		ea
@@ -2392,7 +2602,7 @@ X0c56:	mov		r0,#1
 		clr		midi_active
 		mov		warmboot_magic1,#0
 		mov		warmboot_magic2,#0
-X0c61:	ret	
+X0c61:	ret
 
 ;============================= RECORDING COMMANDS ==================================
 ;------------------------------- Group 2: Recording Control -----------------------
@@ -2424,11 +2634,11 @@ dma_rec_autoinit:
 		mov		a,#0
 		movx	@r0,a
 		setb	ea
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		rem_xfer_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -2449,13 +2659,13 @@ X0c95:	jnb		pin_dsp_data_rdy,X0c95
 		nop	
 		nop	
 		movx	a,@r0
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 X0c9f:	jnb		pin_dsp_data_rdy,X0c9f
 		mov		r0,#0
 		nop	
 		nop	
 		movx	a,@r0
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		ljmp	X0d1d
 
@@ -2520,7 +2730,7 @@ dma_rec_direct:
 		movx	@r0,a
 		mov		r0,#17h
 X0d0e:	movx	a,@r0
-		jnb		acc_addr_hi_or_mode,X0d0e
+		jnb		acc_dma16_mode_select,X0d0e
 		mov		r0,#1bh
 		movx	a,@r0
 X0d15:	jb		pin_host_data_rdy,X0d15
@@ -2582,10 +2792,10 @@ hs_dma_continuous:
 		mov		a,#0
 		movx	@r0,a
 		setb	ea
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		r0,#0ch
 		movx	@r0,a
 		mov		warmboot_magic1,#34h
@@ -2641,11 +2851,11 @@ dma_dac1_autoinit:
 		mov		a,#0
 		movx	@r0,a
 		setb	ea
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		rem_xfer_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -2664,9 +2874,9 @@ dma_dac1_normal:
 		jnb		command_byte_1,X0dce
 		clr		ex0
 X0dce:	lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
 		ljmp	X0e27
@@ -2728,9 +2938,17 @@ dma_dac1_adpcm_use_2bit:
 		jb		command_byte_0,dma_dac1_reference
 		setb	pin_dma_req
 		clr		pin_dma_req
+		; DMA16 initialization
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma16_autoreinit
+		movx	@r0,a
+		clr		acc_dma16_autoreinit
+		movx	@r0,a
+		; ----------
 		mov		r0,#0fh
 X0e41:	movx	a,@r0
-		jnb		acc_buffer_ready,X0e41
+		jnb		acc_dma8_mode_select,X0e41
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -2756,7 +2974,7 @@ dma_dac1_reference:
 		; ----------
 		mov		r0,#0fh
 X0e54:	movx	a,@r0
-		jnb		acc_buffer_ready,X0e54
+		jnb		acc_dma8_mode_select,X0e54
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r2,a
@@ -2808,8 +3026,8 @@ cmdg_dma_dac2:
 ;-----------------------------------------------------------------------------------
 dma_dac2_adpcm_autoinit:
 		setb	dma8_mode
-		mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+		mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		ljmp	X0eb8
 
 ;------------------------------- Single-Cycle ADPCM Transfer ------------------------
@@ -2824,9 +3042,9 @@ dma_dac2_adpcm:
 
 X0e97:	clr		ex0
 		lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
 		ljmp	check_cmd
@@ -2843,6 +3061,14 @@ X0eaa:	clr		dma8_active
 		lcall	dsp_input_data
 		mov		rem_xfer_len_hi,a
 		setb	pin_dsp_busy
+		; Set DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		setb	acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 X0eb8:	clr		dma8_ch1_enable
 		jnb		command_byte_1,dma_dac2_adpcm_use_4bit
 		mov		adpcm_state_reg,#3
@@ -2875,7 +3101,7 @@ dma_dac2_adpcm_use_2_6bit:
 		; ----------
 		mov		r0,#0fh
 X0ed8:	movx	a,@r0
-		jnb		acc_buffer_ready,X0ed8
+		jnb		acc_dma8_mode_select,X0ed8
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r2,a
@@ -2904,7 +3130,7 @@ dma_dac2_no_reference:
 		; ----------
 		mov		r0,#0fh
 X0ef0:	movx	a,@r0
-		jnb		acc_buffer_ready,X0ef0
+		jnb		acc_dma8_mode_select,X0ef0
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -2952,52 +3178,45 @@ cmdg_misc:
 ; ----------------------------------------------------
 ; Index | Command | Handler
 ; ------|---------|-----------------------------------
-;   0   |  D0h    | cmd_pause_dma8				(5ch)
-;   1   |  D1h    | cmd_speaker_on				(48h)
-;   2   |  D2h    | cmd_clear_it1_flag			(13h)
-;   3   |  D3h    | cmd_speaker_off				(4Dh)
-;   4   |  D4h    | cmd_resume_dma8				(A0h)
-;   5   |  D5h    | cmd_pause_dma16				(8Bh)
-;   6   |  D6h    | cmd_resume_dma16			(ECh)
-;   7   |  D7h    | cmd_set_it1_flag			(16h)
+;   0   |  D0h    | cmd_pause_dma8				(50h)
+;   1   |  D1h    | cmd_speaker_on				(3ch)
+;   2   |  D2h    | cmd_d_none					(10h)
+;   3   |  D3h    | cmd_speaker_off				(41h)
+;   4   |  D4h    | cmd_resume_dma8				(94h)
+;   5   |  D5h    | cmd_pause_dma16				(7fh)
+;   6   |  D6h    | cmd_resume_dma16			(0e0h)
+;   7   |  D7h    | cmd_d_none					(10h)
 ; ---------------------------------------------------
-;   8   |  D8h    | cmd_speaker_status			(31h)
-;   9   |  D9h    | cmd_exit_autoinit_dma16		(57h)
-;  10   |  DAh    | cmd_exit_autoinit_dma8		(52h)
+;   8   |  D8h    | cmd_speaker_status			(25h)
+;   9   |  D9h    | cmd_exit_autoinit_dma16		(4bh)
+;  10   |  DAh    | cmd_exit_autoinit_dma8		(46h)
 ;  11   |  DBh    | cmd_d_none					(10h)
-;  12   |  DCh    | cmd_check_and_set_flag		(19h)
-;  13   |  DDh    | cmd_clear_and_exit			(1Ch)
-;  14   |  DEh    | cmd_set_ctrl_bits_0_1		(1Fh)
-;  15   |  DFh    | cmd_clear_ctrl_bit_1		(28h)
+;  12   |  DCh    | cmd_check_and_set_flag		(0fdh)
+;  13   |  DDh    | cmd_clear_and_exit			(0f2h)
+;  14   |  DEh    | cmd_set_start_dma16			(13h)
+;  15   |  DFh    | cmd_clear_start_dma16		(1ch)
 ; ----------------------------------------------------
 table_misc_cmds:
-		.db	5ch,48h,13h,4dh,0a0h,8bh,0ech,16h
-		.db	31h,57h,52h,10h,19h,1ch,1fh,28h
+		.db	50h,3ch,10h,41h,94h,7fh,0e0h,10h
+		.db	25h,4bh,46h,10h,0fdh,0f2h,13h,1ch
 
 ;-----------------------------------------------------------------------------------
-; 10h: invalid command DB
+; 10h: invalid command D2, D7, DB
 ;-----------------------------------------------------------------------------------
-cmd_d_none:						ljmp	cmdg_d_exit
-vector_cmd_clear_it1_flag:		ljmp	cmd_clear_it1_flag
-vector_cmd_set_it1_flag:		ljmp	cmd_set_it1_flag
-vector_cmd_check_and_set_flag:	ljmp	cmd_check_and_set_flag
-vector_cmd_clear_and_exit:		ljmp	cmd_clear_and_exit
+cmd_d_none:	
+		ljmp	cmdg_d_exit
 
 ;============================= CONTROL REGISTER OPERATIONS =========================
-;------------------------------- Set Control Bits 0-1 (DEh) ------------------------
-; Sets bits 0 and 1 in control register 05h (undocumented)
-;-----------------------------------------------------------------------------------
-cmd_set_ctrl_bits_0_1:
+;------------------------------- Set 16-bit DMA Start Pending (DEh) ----------------
+cmd_set_start_dma16:
 		mov		r0,#5
 		movx	a,@r0
-		orl		a,#3
+		setb	acc_dma16_start_pending
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
-;------------------------------- Clear Control Bit 1 (DFh) -------------------------
-; Clears bit 1 in control register 05h (undocumented)
-;-----------------------------------------------------------------------------------
-cmd_clear_ctrl_bit_1:
+;------------------------------- Clear 16-bit DMA Start Pending (DFh) --------------
+cmd_clear_start_dma16:
 		mov		r0,#5
 		movx	a,@r0
 		clr		acc_dma16_start_pending
@@ -3150,10 +3369,10 @@ X0fdd:	mov		r0,#8
 		mov		a,#0
 		movx	@r0,a
 		mov		r0,#0ch
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		movx	@r0,a
 		mov		r0,#0bh
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		movx	@r0,a
 X1012:	setb	ea
 		setb	ex1
@@ -3208,24 +3427,6 @@ X103e:	jnb		pin_dsp_data_rdy,X103e
 		setb	diagnostic_flag
 		ljmp	cmdg_d_exit
 
-;------------------------------- Clear IT1 Flag (D2h) ------------------------------
-; Disables edge-triggered interrupts for INT1
-; Affects:
-;   - Clears IT1 bit in TCON register
-;-----------------------------------------------------------------------------------
-cmd_clear_it1_flag:
-		clr		it1
-		ljmp	cmdg_d_exit
-
-;------------------------------- Set IT1 Flag (D7h) --------------------------------
-; Enables edge-triggered interrupts for INT1
-; Affects:
-;   - Sets IT1 bit in TCON register
-;-----------------------------------------------------------------------------------
-cmd_set_it1_flag:	
-		setb	it1
-		ljmp	cmdg_d_exit
-
 ;============================= COMMAND GROUP EXIT HANDLER ==========================
 ;------------------------------- Group D Cleanup -----------------------------------
 ; Common exit routine for all Group D commands:
@@ -3235,6 +3436,14 @@ cmd_set_it1_flag:
 ;-----------------------------------------------------------------------------------
 cmdg_d_exit:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		setb	ea
 		ljmp	check_cmd
 
@@ -3312,16 +3521,13 @@ cmd_dsp_dma_id:
 		mov		adpcm_mode_reg,#3
 		lcall	dma_update_control_register
 		lcall	dsp_input_data
-		; dsp_dma_id0 += dsp_dma_id1 XOR challenge_byte
 		xrl		a,dsp_dma_id1
 		add		a,dsp_dma_id0
 		mov		dsp_dma_id0,a
-		; dsp_dma_id1 = dsp_dma_id1 >> 2 (actually a rotate)
 		mov		a,dsp_dma_id1
 		rr		a
 		rr		a
 		mov		dsp_dma_id1,a
-		; Get current value of dsp_dma_id0 and send it to host PC (response)
 		mov		a,dsp_dma_id0
 		mov		r0,#1dh
 		movx	@r0,a
@@ -3384,6 +3590,14 @@ X10dd:	mov		b,a
 ;-----------------------------------------------------------------------------------
 cmdg_e_exit:
 		clr		pin_dsp_busy
+		; Clear DMA8 mode
+		push	acc
+		mov		r0,#5
+		movx	a,@r0
+		clr		acc_dma8_mode_select
+		movx	@r0,a
+		pop		acc
+		; ----------
 		ljmp	wait_for_cmd
 
 ;================================ ADPCM DECODERS ===================================
@@ -3621,7 +3835,7 @@ dsp_input_data:
 		jnb		pin_dsp_data_rdy,dsp_input_data
 		mov		r0,#0
 		nop	
-		nop	
+		nop
 		movx	a,@r0
 		ret	
 
@@ -3632,7 +3846,7 @@ dsp_output_data:
 		jb		pin_host_data_rdy,dsp_output_data
 		mov		r0,#0
 		nop	
-		nop	
+		nop
 		movx	@r0,a
 		ret	
 
@@ -3686,30 +3900,30 @@ dma16_init:
 ;-----------------------------------------------------------------------------------
 X1233:
 		mov		a,#0
-		mov		r0,#80h
+		mov		r0,#csp_data_port
 		movx	@r0,a
-		mov		r0,#81h
+		mov		r0,#csp_status_port
 		movx	@r0,a
 		mov		rem_xfer_len_lo,#0bbh
 		mov		rem_xfer_len_hi,#3
 		mov		a,#8ch
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#8ah
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		dptr,#asp_code
 X124e:	mov		a,#0
 		movc	a,@a+dptr
-		mov		r0,#83h
+		mov		r0,#csp_program_port
 		movx	@r0,a
 		cjne	a,rem_xfer_len_lo,X1269
 		cjne	a,rem_xfer_len_hi,X1267
 		mov		a,#0
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		mov		a,#70h
-		mov		r0,#82h
+		mov		r0,#csp_control_port
 		movx	@r0,a
 		ljmp	X126e
 

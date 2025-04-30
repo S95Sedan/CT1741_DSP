@@ -1,5 +1,5 @@
 ;=================================================================================
-; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.13
+; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.12
 ;=================================================================================
 
 ;---------------------------------- Command Bytes --------------------------------------
@@ -168,7 +168,7 @@ int1_vector:			ljmp	int1_main_handler
 ;---------------------------------------------------------------------------------
 int0_main_handler:
 		setb	pin_dsp_busy
-		; Set DMA8 Mode
+		; Set DMA8 mode
 		push	acc
 		mov		r0,#5
 		movx	a,@r0
@@ -1005,10 +1005,6 @@ cold_boot:
 ; - Maintains CSP enable states during firmware updates
 ;---------------------------------------------------------------------------------
 warm_boot:
-		mov		r0,#5
-		movx	a,@r0
-		setb	acc_dma16_start_pending
-		movx	@r0,a
 		mov		adpcm_state_reg,#0
 		mov		dma8_config_temp,#0
 		mov		dma16_config_temp,#0
@@ -1153,6 +1149,12 @@ cmd_dma8:
 		jnb		command_byte_3,X050c
 		orl		a,#5
 		mov		dma_control_temp,a
+		mov		r0,#8
+		movx	a,@r0
+		orl		a,#40h
+		movx	@r0,a
+		anl		a,#0bfh
+		movx	@r0,a
 		setb	dma16_start_pending
 		ljmp	X0512
 
@@ -1249,6 +1251,12 @@ cmd_dma16:
 		jnb		command_byte_3,X05c2
 		orl		a,#4
 		mov		dma_control_temp,a
+		mov		r0,#10h
+		movx	a,@r0
+		orl		a,#40h
+		movx	@r0,a
+		anl		a,#0bfh
+		movx	@r0,a
 		setb	dma16_autoreinit_pause
 		ljmp	X05c8
 
@@ -1897,6 +1905,7 @@ convert_samplerate:
 ; Time Constant → Samplerate Register Mapping
 ; 256-entry table covering 5kHz-45kHz samplerates
 ; Special values: 0FFh = 45.32kHz, 0EBh = Max Valid Input
+; Table has an error near the bottom, 0c8h instead of 64h.
 ;--------------------------------------------------------------------------------
 samplerate_table:	
 	.db	15h,16h,16h,16h,16h,16h,16h,16h
@@ -1915,7 +1924,7 @@ samplerate_table:
     .db	25h,25h,25h,25h,26h,26h,26h,26h
     .db	27h,27h,27h,27h,28h,28h,28h,29h
     .db	29h,29h,29h,2ah,2ah,2ah,2bh,2bh
-    .db	2bh,2ch,2ch,2dh,2dh,2dh,2eh,2eh
+    .db	2bh,2ch,2ch,2ch,2dh,2dh,2eh,2eh
     .db	2eh,2fh,2fh,30h,30h,30h,31h,31h
     .db	32h,32h,33h,33h,34h,34h,35h,35h
     .db	36h,36h,37h,37h,38h,38h,39h,39h
@@ -1924,7 +1933,7 @@ samplerate_table:
     .db	46h,47h,48h,49h,49h,4ah,4bh,4dh
     .db	4eh,4fh,50h,51h,52h,53h,55h,56h
     .db	57h,59h,5ah,5ch,5dh,5fh,60h,62h
-    .db	64h,66h,68h,6ah,6ch,6eh,70h,72h
+    .db	0c8h,66h,68h,6ah,6ch,6eh,70h,72h
     .db	75h,77h,7ah,7ch,7fh,82h,85h,89h
     .db	8ch,90h,93h,97h,9ch,0a0h,0a5h,0aah
     .db	0afh,0b5h,0bbh,0c1h,0c8h,0d0h,0d8h,0e0h
@@ -1967,6 +1976,7 @@ X09ca:	mov		a,#17h
 		mov		dma_timing_control,a
 		mov		a,timer0_counter
 		addc	a,#0
+		mov		a,timer0_counter					; Error, shouldnt be here.
 		rrc		a
 		mov		timer0_counter,a
 		mov		a,dma_timing_control
@@ -2217,7 +2227,8 @@ cmd_mailbox_reset_or_diag:
 		nop	
 		movx	@r0,a
 		ljmp	cmdg_f_exit
-		; Impossible call in 4.13
+
+		; Impossible call in 4.12
 		lcall	X1233
 		ljmp	cmdg_f_exit
 
@@ -3162,8 +3173,8 @@ cmdg_misc:
 ;  11   |  DBh    | cmd_d_none					(10h)
 ;  12   |  DCh    | cmd_check_and_set_flag		(0fdh)
 ;  13   |  DDh    | cmd_clear_and_exit			(0f2h)
-;  14   |  DEh    | cmd_set_start_dma16			(13h)
-;  15   |  DFh    | cmd_clear_start_dma16		(1ch)
+;  14   |  DEh    | cmd_set_start_dma8			(13h)
+;  15   |  DFh    | cmd_clear_start_dma8		(1ch)
 ; ----------------------------------------------------
 table_misc_cmds:
 		.db	50h,3ch,10h,41h,94h,7fh,0e0h,10h
@@ -3176,19 +3187,19 @@ cmd_d_none:
 		ljmp	cmdg_d_exit
 
 ;============================= CONTROL REGISTER OPERATIONS =========================
-;------------------------------- Set 16-bit DMA Start Pending (DEh) ----------------
-cmd_set_start_dma16:
+;------------------------------- Set 8-bit DMA Start Pending (DEh) ----------------
+cmd_set_start_dma8:
 		mov		r0,#5
 		movx	a,@r0
-		setb	acc_dma16_start_pending
+		setb	acc_dma8_start_pending
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
-;------------------------------- Clear 16-bit DMA Start Pending (DFh) --------------
-cmd_clear_start_dma16:
+;------------------------------- Clear 8-bit DMA Start Pending (DFh) --------------
+cmd_clear_start_dma8:
 		mov		r0,#5
 		movx	a,@r0
-		clr		acc_dma16_start_pending
+		clr		acc_dma8_start_pending
 		movx	@r0,a
 		ljmp	cmdg_d_exit
 
@@ -3591,7 +3602,7 @@ adpcm_2_decode:
 
 X10ff:	add		a,r2
 		jnc		X1104
-		; 4.13 uses: mov a,0ffh (which is incorrect)
+		; 4.12 uses: mov a,0ffh (which is incorrect)
 		mov		a,0ffh
 X1104:	mov		r2,a
 		sjmp	adpcm_2_output
@@ -4043,281 +4054,280 @@ dsp_copyright:
 ; DSP version number
 ; ------------------------------
 dsp_version:	
-		.db	4,0dh
+		.db	4,0ch
 
 ; ------------------------------
 ; Unused data?
 ; ------------------------------
 unused:	
 	.db	67h,12h,7fh,8ch,98h,0a4h,0b0h,0bbh
-    .db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
-    .db	0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,0ah,0fh,16h,1dh,26h,2fh,39h
-    .db	44h,4fh,5bh,67h,73h,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
-    .db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
-    .db	80h,8dh,8fh,8ch,76h,78h,80h,82h
-    .db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-    .db	0c2h,0c5h,0c4h,7fh,73h,67h,5bh,4fh
-    .db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
-    .db	6,3,1,1,1,3,6,4ch
-    .db	0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch
-    .db	0a4h,0b0h,7fh,73h,67h,5bh,4fh,44h
-    .db	39h,2fh,26h,1dh,0bch,0b8h,0b0h,0b2h
-    .db	9dh,98h,91h,70h,6ah,69h,68h,6eh
-    .db	78h,82h,80h,7ah,7eh,80h,78h,78h
-    .db	6eh,50h,4ch,49h,0fch,0f9h,0f5h,0f0h
-    .db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
-    .db	98h,8ch,7fh,73h,67h,5bh,4fh,44h
-    .db	39h,2fh,26h,1dh,16h,0fh,0ah,6
-    .db	3,1,1,1,3,6,0d9h,0e2h
-    .db	0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh
-    .db	0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h
-    .db	0c6h,0bbh,0b0h,0a4h,98h,8ch,46h,4bh
-    .db	50h,4dh,52h,5eh,66h,64h,6eh,7ch
-    .db	88h,80h,8dh,8fh,8ch,76h,78h,80h
-    .db	82h,7dh,7fh,73h,67h,5bh,4fh,44h
-    .db	39h,2fh,26h,1dh,87h,8eh,90h,94h
-    .db	0a2h,0bah,0c1h,0c2h,0c5h,0c4h,50h,46h
-    .db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-    .db	7ch,68h,6eh,78h,82h,80h,7ah,7eh
-    .db	80h,78h,78h,6eh,50h,4ch,49h,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-    .db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-    .db	76h,78h,80h,82h,7dh,98h,8ch,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,98h,8ch,80h,8ch,98h,0a4h,0b0h
-    .db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-    .db	0f9h,0fch,0feh,0ffh,0feh,87h,8eh,90h
-    .db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,98h
-    .db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-    .db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-    .db	2fh,26h,1dh,16h,0fh,0ah,6,3
-    .db	1,1,1,3,6,0ah,0fh,16h
-    .db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
-    .db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-    .db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-    .db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-    .db	76h,78h,80h,82h,7dh,87h,8eh,90h
-    .db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-    .db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-    .db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-    .db	70h,6ah,69h,68h,6eh,78h,82h,80h
-    .db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-    .db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-    .db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-    .db	1dh,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-    .db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-    .db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-    .db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-    .db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-    .db	8fh,8ch,76h,78h,80h,82h,7dh,87h
-    .db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-    .db	0c4h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-    .db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-    .db	1dh,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,0ah,0fh,16h,1dh,26h
-    .db	2fh,39h,44h,4fh,5bh,67h,73h,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-    .db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-    .db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-    .db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-    .db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
-    .db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
-    .db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
-    .db	69h,68h,6eh,78h,82h,80h,7ah,7eh
-    .db	80h,78h,78h,6eh,50h,4ch,49h,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-    .db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-    .db	76h,78h,80h,82h,7dh,98h,8ch,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,98h,8ch,80h,8ch,98h,0a4h,0b0h
-    .db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
-    .db	0f9h,0fch,0feh,0ffh,0feh,87h,8eh,90h
-    .db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
-    .db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
-    .db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
-    .db	70h,6ah,69h,68h,6eh,78h,82h,80h
-    .db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
-    .db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-    .db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-    .db	1dh,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
-    .db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
-    .db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-    .db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
-    .db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
-    .db	8fh,8ch,76h,78h,80h,82h,7dh,98h
-    .db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-    .db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,98h,8ch,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,87h
-    .db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
-    .db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
-    .db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
-    .db	98h,91h,70h,6ah,69h,68h,6eh,78h
-    .db	82h,80h,7ah,7eh,80h,78h,78h,6eh
-    .db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
-    .db	2fh,26h,1dh,16h,0fh,0ah,6,3
-    .db	1,1,1,3,6,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
-    .db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
-    .db	80h,8dh,8fh,8ch,76h,78h,80h,82h
-    .db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-    .db	0c2h,0c5h,0c4h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,7fh
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-    .db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-    .db	1dh,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,0ah,0fh,16h,1dh,26h
-    .db	2fh,39h,44h,4fh,5bh,67h,73h,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-    .db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-    .db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-    .db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-    .db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
-    .db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
-    .db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
-    .db	69h,68h,6eh,78h,82h,80h,7ah,7eh
-    .db	80h,78h,78h,6eh,50h,4ch,49h,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
-    .db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
-    .db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
-    .db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
-    .db	76h,78h,80h,82h,7dh,87h,8eh,90h
-    .db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,0ah,0fh,16h,1dh,26h,2fh,39h
-    .db	44h,4fh,5bh,67h,73h,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
-    .db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
-    .db	80h,8dh,8fh,8ch,76h,78h,80h,82h
-    .db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
-    .db	0c2h,0c5h,0c4h,0b0h,0aeh,0b0h,0b2h,9eh
-    .db	9ch,9bh,9ch,0a4h,0b0h,0bch,0b8h,0b0h
-    .db	0b2h,9dh,98h,91h,70h,6ah,69h,68h
-    .db	6eh,78h,82h,80h,7ah,7eh,80h,78h
-    .db	78h,6eh,50h,4ch,49h,0fch,0f9h,0f5h
-    .db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
-    .db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
-    .db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
-    .db	6,3,1,1,1,3,6,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-    .db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-    .db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-    .db	80h,82h,7dh,98h,8ch,80h,8ch,98h
-    .db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
-    .db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,98h
-    .db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
-    .db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
-    .db	0feh,0ffh,0feh,87h,8eh,90h,94h,0a2h
-    .db	0bah,0c1h,0c2h,0c5h,0c4h,98h,8ch,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
-    .db	73h,67h,5bh,4fh,44h,39h,2fh,26h
-    .db	1dh,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,0ah,0fh,16h,1dh,26h
-    .db	2fh,39h,44h,4fh,5bh,67h,73h,80h
-    .db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
-    .db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
-    .db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
-    .db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
-    .db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
-    .db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
-    .db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
-    .db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
-    .db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
-    .db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
-    .db	69h,68h,6eh,78h,82h,80h,7ah,7eh
-    .db	80h,78h,78h,6eh,50h,4ch,49h,0fch
-    .db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
-    .db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
-    .db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
-    .db	0fh,0ah,6,3,1,1,1,3
-    .db	6,16h,0fh,0ah,6,3,1,1
-    .db	1,3,6,7fh,73h,67h,5bh,4fh
-    .db	44h,39h,2fh,26h,1dh,0ah,0fh,16h
-    .db	1dh,26h,2fh,39h,44h,4fh,5bh,0b0h
-	.db	0b2h,9dh,98h,91h,70h,6ah,69h
+	.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
+	.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
+	.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
+	.db	98h,8ch,80h,8ch,98h,0a4h,0b0h,0bbh
+	.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
+	.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
+	.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
+	.db	98h,8ch,7fh,73h,67h,5bh,4fh,44h
+	.db	39h,2fh,26h,1dh,16h,0fh,0ah,6
+	.db	3,1,1,1,3,6,0ah,0fh
+	.db	16h,1dh,26h,2fh,39h,44h,4fh,5bh
+	.db	67h,73h,80h,8ch,98h,0a4h,0b0h,0bbh
+	.db	0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h
+	.db	0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h
+	.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
+	.db	98h,8ch,46h,4bh,50h,4dh,52h,5eh
+	.db	66h,64h,6eh,7ch,88h,80h,8dh,8fh
+	.db	8ch,76h,78h,80h,82h,7dh,87h,8eh
+	.db	90h,94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h
+	.db	7fh,73h,67h,5bh,4fh,44h,39h,2fh
+	.db	26h,1dh,16h,0fh,0ah,6,3,1
+	.db	1,1,3,6,4ch,0b0h,0aeh,0b0h
+	.db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,7fh
+	.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
+	.db	1dh,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
+	.db	70h,6ah,69h,68h,6eh,78h,82h,80h
+	.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
+	.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
+	.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
+	.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
+	.db	1dh,16h,0fh,0ah,6,3,1,1
+	.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
+	.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
+	.db	8fh,8ch,76h,78h,80h,82h,7dh,7fh
+	.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
+	.db	1dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
+	.db	0c2h,0c5h,0c4h,50h,46h,4bh,50h,4dh
+	.db	52h,5eh,66h,64h,6eh,7ch,68h,6eh
+	.db	78h,82h,80h,7ah,7eh,80h,78h,78h
+	.db	6eh,50h,4ch,49h,0fch,0f9h,0f5h,0f0h
+	.db	0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h
+	.db	98h,8ch,7fh,73h,67h,5bh,4fh,44h
+	.db	39h,2fh,26h,1dh,16h,0fh,0ah,6
+	.db	3,1,1,1,3,6,0d9h,0e2h
+	.db	0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh
+	.db	0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h
+	.db	0c6h,0bbh,0b0h,0a4h,98h,8ch,46h,4bh
+	.db	50h,4dh,52h,5eh,66h,64h,6eh,7ch
+	.db	88h,80h,8dh,8fh,8ch,76h,78h,80h
+	.db	82h,7dh,98h,8ch,80h,8ch,98h,0a4h
+	.db	0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h
+	.db	0f5h,0f9h,0fch,0feh,0ffh,0feh,98h,8ch
+	.db	80h,8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h
+	.db	0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh
+	.db	0ffh
+	.db	0feh,87h,8eh,90h,94h,0a2h,0bah,0c1h
+	.db	0c2h,0c5h,0c4h,98h,8ch,80h,8ch,98h
+	.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
+	.db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
+	.db	0fh,0ah,6,3,1,1,1,3
+	.db	6,0ah,0fh,16h,1dh,26h,2fh,39h
+	.db	44h,4fh,5bh,67h,73h,80h,8ch,98h
+	.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
+	.db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
+	.db	80h,8dh,8fh,8ch,76h,78h,80h,82h
+	.db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
+	.db	0c2h,0c5h,0c4h,0b0h,0aeh,0b0h,0b2h,9eh
+	.db	9ch,9bh,9ch,0a4h,0b0h,0bch,0b8h,0b0h
+	.db	0b2h,9dh,98h,91h,70h,6ah,69h,68h
+	.db	6eh,78h,82h,80h,7ah,7eh,80h,78h
+	.db	78h,6eh,50h,4ch,49h,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+	.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
+	.db	6,3,1,1,1,3,6,0d9h
+	.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
+	.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
+	.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
+	.db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
+	.db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
+	.db	80h,82h,7dh,87h,8eh,90h,94h,0a2h
+	.db	0bah,0c1h,0c2h,0c5h,0c4h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+	.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
+	.db	6,3,1,1,1,3,6,0ah
+	.db	0fh,16h,1dh,26h,2fh,39h,44h,4fh
+	.db	5bh,67h,73h,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
+	.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
+	.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
+	.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
+	.db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
+	.db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
+	.db	98h,91h,70h,6ah,69h,68h,6eh,78h
+	.db	82h,80h,7ah,7eh,80h,78h,78h,6eh
+	.db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
+	.db	2fh,26h,1dh,16h,0fh,0ah,6,3
+	.db	1,1,1,3,6,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
+	.db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
+	.db	80h,8dh,8fh,8ch,76h,78h,80h,82h
+	.db	7dh,98h,8ch,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,98h,8ch,80h
+	.db	8ch,98h,0a4h,0b0h,0bbh,0c6h,0d0h,0d9h
+	.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
+	.db	0feh,87h,8eh,90h,94h,0a2h,0bah,0c1h
+	.db	0c2h,0c5h,0c4h,0b0h,0aeh,0b0h,0b2h,9eh
+	.db	9ch,9bh,9ch,0a4h,0b0h,0bch,0b8h,0b0h
+	.db	0b2h,9dh,98h,91h,70h,6ah,69h,68h
+	.db	6eh,78h,82h,80h,7ah,7eh,80h,78h
+	.db	78h,6eh,50h,4ch,49h,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+	.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
+	.db	6,3,1,1,1,3,6,0d9h
+	.db	0e2h,0e9h,0f0h,0f5h,0f9h,0fch,0feh,0ffh
+	.db	0feh,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
+	.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,46h
+	.db	4bh,50h,4dh,52h,5eh,66h,64h,6eh
+	.db	7ch,88h,80h,8dh,8fh,8ch,76h,78h
+	.db	80h,82h,7dh,98h,8ch,80h,8ch,98h
+	.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,98h
+	.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
+	.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,87h,8eh,90h,94h,0a2h
+	.db	0bah,0c1h,0c2h,0c5h,0c4h,0b0h,0aeh,0b0h
+	.db	0b2h,9eh,9ch,9bh,9ch,0a4h,0b0h,0bch
+	.db	0b8h,0b0h,0b2h,9dh,98h,91h,70h,6ah
+	.db	69h,68h,6eh,78h,82h,80h,7ah,7eh
+	.db	80h,78h,78h,6eh,50h,4ch,49h,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,98h,8ch,7fh,73h,67h
+	.db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
+	.db	0fh,0ah,6,3,1,1,1,3
+	.db	6,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
+	.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
+	.db	76h,78h,80h,82h,7dh,87h,8eh,90h
+	.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,7fh,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+	.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
+	.db	6,3,1,1,1,3,6,0ah
+	.db	0fh,16h,1dh,26h,2fh,39h,44h,4fh
+	.db	5bh,67h,73h,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
+	.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
+	.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
+	.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
+	.db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
+	.db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
+	.db	98h,91h,70h,6ah,69h,68h,6eh,78h
+	.db	82h,80h,7ah,7eh,80h,78h,78h,6eh
+	.db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
+	.db	2fh,26h,1dh,16h,0fh,0ah,6,3
+	.db	1,1,1,3,6,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,0fch
+	.db	0f9h,0f5h,0f0h,0e9h,0e2h,0d9h,0d0h,0c6h
+	.db	0bbh,0b0h,0a4h,98h,8ch,46h,4bh,50h
+	.db	4dh,52h,5eh,66h,64h,6eh,7ch,88h
+	.db	80h,8dh,8fh,8ch,76h,78h,80h,82h
+	.db	7dh,87h,8eh,90h,94h,0a2h,0bah,0c1h
+	.db	0c2h,0c5h,0c4h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
+	.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
+	.db	2fh,26h,1dh,16h,0fh,0ah,6,3
+	.db	1,1,1,3,6,0ah,0fh,16h
+	.db	1dh,26h,2fh,39h,44h,4fh,5bh,67h
+	.db	73h,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
+	.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,46h,4bh,50h,4dh,52h,5eh,66h
+	.db	64h,6eh,7ch,88h,80h,8dh,8fh,8ch
+	.db	76h,78h,80h,82h,7dh,87h,8eh,90h
+	.db	94h,0a2h,0bah,0c1h,0c2h,0c5h,0c4h,0b0h
+	.db	0aeh,0b0h,0b2h,9eh,9ch,9bh,9ch,0a4h
+	.db	0b0h,0bch,0b8h,0b0h,0b2h,9dh,98h,91h
+	.db	70h,6ah,69h,68h,6eh,78h,82h,80h
+	.db	7ah,7eh,80h,78h,78h,6eh,50h,4ch
+	.db	49h,0fch,0f9h,0f5h,0f0h,0e9h,0e2h,0d9h
+	.db	0d0h,0c6h,0bbh,0b0h,0a4h,98h,8ch,7fh
+	.db	73h,67h,5bh,4fh,44h,39h,2fh,26h
+	.db	1dh,16h,0fh,0ah,6,3,1,1
+	.db	1,3,6,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
+	.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
+	.db	8fh,8ch,76h,78h,80h,82h,7dh,98h
+	.db	8ch,80h,8ch,98h,0a4h,0b0h,0bbh,0c6h
+	.db	0d0h,0d9h,0e2h,0e9h,0f0h,0f5h,0f9h,0fch
+	.db	0feh,0ffh,0feh,98h,8ch,80h,8ch,98h
+	.db	0a4h,0b0h,0bbh,0c6h,0d0h,0d9h,0e2h,0e9h
+	.db	0f0h,0f5h,0f9h,0fch,0feh,0ffh,0feh,87h
+	.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
+	.db	0c4h,98h,8ch,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,7fh,73h,67h,5bh,4fh
+	.db	44h,39h,2fh,26h,1dh,16h,0fh,0ah
+	.db	6,3,1,1,1,3,6,0ah
+	.db	0fh,16h,1dh,26h,2fh,39h,44h,4fh
+	.db	5bh,67h,73h,80h,8ch,98h,0a4h,0b0h
+	.db	0bbh,0c6h,0d0h,0d9h,0e2h,0e9h,0f0h,0f5h
+	.db	0f9h,0fch,0feh,0ffh,0feh,0fch,0f9h,0f5h
+	.db	0f0h,0e9h,0e2h,0d9h,0d0h,0c6h,0bbh,0b0h
+	.db	0a4h,98h,8ch,46h,4bh,50h,4dh,52h
+	.db	5eh,66h,64h,6eh,7ch,88h,80h,8dh
+	.db	8fh,8ch,76h,78h,80h,82h,7dh,87h
+	.db	8eh,90h,94h,0a2h,0bah,0c1h,0c2h,0c5h
+	.db	0c4h,0b0h,0aeh,0b0h,0b2h,9eh,9ch,9bh
+	.db	9ch,0a4h,0b0h,0bch,0b8h,0b0h,0b2h,9dh
+	.db	98h,91h,70h,6ah,69h,68h,6eh,78h
+	.db	82h,80h,7ah,7eh,80h,78h,78h,6eh
+	.db	50h,4ch,49h,0fch,0f9h,0f5h,0f0h,0e9h
+	.db	0e2h,0d9h,0d0h,0c6h,0bbh,0b0h,0a4h,98h
+	.db	8ch,7fh,73h,67h,5bh,4fh,44h,39h
+	.db	2fh,26h,1dh,16h,0fh,0ah,6,3
+	.db	1,1,1,3,6,7fh,73h,67h
+	.db	5bh,4fh,44h,39h,2fh,26h,1dh,16h
+	.db	0fh,0ah,6,3,1,1,1,3
+	.db	6,0f5h,0f0h,0aah,5ah
 	

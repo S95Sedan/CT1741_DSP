@@ -2,8 +2,14 @@
 ; SB DSP CT1741 (8052) Firmware Disassembly - Version 4.04
 ;=================================================================================
 
-;---------------------------------- Global Variables -----------------------------
-; Stock, Stack=0c0h
+;---------------------------------- Command Bytes --------------------------------------
+.EQU command_byte_0,			0		; 			Command Byte Bit 0 (LSB)
+.EQU command_byte_1,			1		; 			Command Byte Bit 1
+.EQU command_byte_2,			2		; 			Command Byte Bit 2
+.EQU command_byte_3,			3		; 			Command Byte Bit 3 (MSB)
+
+;---------------------------------- Global Variables -----------------------------------
+; Stock, Stack=80h
 .EQU init_stack,				80h		;			Stack Pointer
 .EQU init_scon,					42h		;			Serial Control
 .EQU init_pcon,					80h		;			Power Control
@@ -11,52 +17,77 @@
 .EQU init_timer1_byte_lo,		0fch	;			Timer 1 Low byte
 .EQU init_timer1_byte_hi,		0fch	;			Timer 1 High byte
 
-;---------------------------------- MIDI Buffer ----------------------------------
-; Stock, Size=80h, End=0c0h
+;---------------------------------- MIDI Buffer ----------------------------------------
+; Stock, Size=40h, End=80h
 .EQU midi_buffer_size,			40h		;			MIDI Buffer - Size
 .EQU midi_buffer_pt_write,		40h		;			MIDI Buffer - Write Pointer
 .EQU midi_buffer_pt_read,		40h		;			MIDI Buffer - Read Pointer
 .EQU midi_buffer_end,			80h		;			MIDI Buffer - End
 
-;---------------------------------- Command Bytes --------------------------------
-.EQU command_byte_0,			0		; 			Command Byte Bit 0 (LSB)
-.EQU command_byte_1,			1		; 			Command Byte Bit 1
-.EQU command_byte_2,			2		; 			Command Byte Bit 2
-.EQU command_byte_3,			3		; 			Command Byte Bit 3 (MSB)
-
-;============================= HARDWARE REGISTER MAP =============================
+;================================== SYSTEM ARCHITECTURE ================================
 .EQU isr_temp_storage,			00h		; rb0r0		ISR Temporary Storage
 
-;---------------------------------- CSP Registers --------------------------------
-.EQU csp_program_id_lo,			08h		; rb1r0		DMA Command Parameter 0
-.EQU csp_program_id_hi,			09h		; rb1r1		DMA Command Parameter 1
-
-;---------------------------------- ADPCM Registers ------------------------------
+;=============================== PERIPHERAL REGISTER MAP ===============================
+;---------------------------------- ADPCM Subsystem ------------------------------------
 .EQU adpcm_mode_reg,			0ah		; rb1r2		ADPCM Mode Control
 .EQU adpcm_state_reg,			0bh		; rb1r3		ADPCM State Control
 
-;---------------------------------- DMA Registers --------------------------------
-.EQU dma_len_temp_lo,			0ch		; rb1r4		DMA Length Temp Storage (Low)
-.EQU dma_len_temp_hi,			0dh		; rb1r5		DMA Length Temp Storage (High)
-.EQU dma_block_len_lo,			0eh		; rb1r6		DMA Block Length Low (Predefined)
-.EQU dma_block_len_hi,			0fh		; rb1r7		DMA Block Length High (Predefined)
-
+;=================================== DMA SUBSYSTEM =====================================
+;---------------------------------- Common Registers -----------------------------------
 .EQU dma_status_reg,			10h		; rb2r0		DMA Status/Control
-.EQU dma_xfer_len_lo,			11h		; rb2r1		Active DMA Transfer Length Low
-.EQU dma_xfer_len_hi,			12h		; rb2r2		Active DMA Transfer Length High
 .EQU dma_addr_lo,				13h		; rb2r3		DMA Current Address Low
 .EQU dma_addr_hi,				14h		; rb2r4		DMA Current Address High
-.EQU dma_block_size_lo,			15h		; rb2r5		DMA Block Size Low
-.EQU dma_block_size_hi,			16h		; rb2r6		DMA Block Size High
 .EQU dma_timing_control,		17h		; rb2r7		DMA Timing Control
 
-;---------------------------------- Timer Registers ------------------------------
+;---------------------------------- 8-bit DMA Channel ----------------------------------
+.EQU dma8_block_len_lo,			0eh		; rb1r6		8-bit DMA Block Length (Low)
+.EQU dma8_block_len_hi,			0fh		; rb1r7		8-bit DMA Block Length (High)
+.EQU dma8_xfer_len_lo,			11h		; rb2r1		8-bit DMA Active Transfer Length (Low)
+.EQU dma8_xfer_len_hi,			12h		; rb2r2		8-bit DMA Active Transfer Length (High)
+.EQU dma8_config_temp,			2ch		; 2ch		8-bit DMA Temporary storage
+.EQU dma8_autoreinit_en,		64h		; 2ch.4		8-bit DMA auto-reinit enable
+.EQU dma8_timing_override,		65h		; 2ch.5		8-bit DMA timing override
+
+.EQU dma8_start_pending,		18h		; 23h.0 	8-bit DMA transfer start pending
+.EQU dma8_autoreinit_pause,		1ah		; 23h.2		8-bit DMA auto-reinit paused state
+.EQU dma8_active,				21h		; 24h.1		8-bit DMA transfer in progress
+.EQU dma8_mode,					22h		; 24h.2		8-bit DMA mode
+.EQU dma8_ch1_enable,			0a5h	; p2.5		8-bit DMA enable (1=Enable, 0=Disable)
+
+.EQU acc_dma8_start_pending,	0e0h	; acc.0		8-bit DMA start pending
+.EQU acc_dma8_mode_active,		0e2h	; acc.2		8-bit DMA Active?
+.EQU acc_dma8_autoreinit,		0e4h	; acc.4		8-bit DMA auto-reinit toggle
+.EQU acc_dma8_mode_select,		0e6h	; acc.6		8-bit DMA mode select
+.EQU group_4_dma8_pause,		0a1h	; p2.1		8-bit DMA channel 1 paused
+
+;--------------------------------- 16-bit DMA Channel ----------------------------------
+.EQU dma16_len_temp_lo,			0ch		; rb1r4		16-bit DMA Length Temp Storage (Low)
+.EQU dma16_len_temp_hi,			0dh		; rb1r5		16-bit DMA Length Temp Storage (High)
+.EQU dma16_block_size_lo,		15h		; rb2r5		16-bit DMA Block Size (Low)
+.EQU dma16_block_size_hi,		16h		; rb2r6		16-bit DMA Block Size (High)
+.EQU dma16_config_temp,			2dh		; 2dh		16-bit DMA Temporary storage
+.EQU dma16_autoreinit_en,		6ch		; 2dh.4		16-bit DMA auto-reinit enable
+.EQU dma16_timing_override,		6dh		; 2dh.5		16-bit DMA alternate addressing
+
+.EQU dma16_start_pending,		19h		; 23h.1 	16-bit DMA transfer start pending
+.EQU dma16_autoreinit_pause,	1bh		; 23h.3		16-bit DMA auto-reinit paused state
+.EQU dma16_active,				23h		; 24h.3		16-bit DMA transfer in progress
+.EQU dma16_mode,				24h		; 24h.4		16-bit DMA mode
+.EQU dma16_ch1_enable,			0a4h	; p2.4		16-bit DMA enable (1=Enable, 0=Disable)
+
+.EQU acc_dma16_start_pending,	0e1h	; acc.1		16-bit DMA start pending
+.EQU acc_dma16_autoreinit,		0e5h	; acc.5		16-bit DMA auto-reinit toggle
+.EQU acc_dma16_mode_select,		0e7h	; acc.7		16-bit DMA mode select
+.EQU group_4_dma16_pause,		0a2h	; p2.2		16-bit DMA channel 1 paused
+
+;----------------------------------- Timer Subsystem -----------------------------------
 .EQU timer0_counter,			18h		; rb3r0		Timer 0 Counter Storage
 .EQU timer0_tlow,				19h		; rb3r1		Timer 0 Low Byte
 .EQU timer0_thigh,				1ah		; rb3r2		Timer 0 High Byte
+.EQU timer0_auto_reload_en,		1eh		; 23h.6		Timer 0 auto-reload enable
 
-;============================== MEMORY BIT EQUATES ===============================
-;--- Port 1 ---
+;=============================== PORT PIN DEFINITIONS ==================================
+;---------------------------------- Port 1 (90h) ---------------------------------------
 .EQU pin_host_data_rdy,			90h		; p1.0		Host Data Ready
 .EQU pin_dsp_data_rdy,			91h		; p1.1		DSP Data Ready
 .EQU pin_dsp_busy,				92h		; p1.2		DSP Busy Flag
@@ -66,77 +97,56 @@
 .EQU pin_midi_irq,				96h		; p1.6		MIDI IRQ Status
 .EQU pin_timer0_toggle,			97h		; p1.7		Timer 0 Pulse Toggle
 
-;--- Port 2 ---
-.EQU group_4_dma8_pause,		0a1h	; p2.1		8-bit DMA channel 1 paused
-.EQU group_4_dma16_pause,		0a2h	; p2.2		16-bit DMA channel 1 paused
-.EQU dma_safety_override_en,	0a3h	; p2.3		DMA timing safety override
-.EQU dma16_ch1_enable,			0a4h	; p2.4		Set during warm boot
-.EQU dma8_ch1_enable,			0a5h	; p2.5		DMA timing margin alert (CT1745?)
+;---------------------------------- Port 2 (a0h) ---------------------------------------
 .EQU pin_periph_dis,			0a6h	; p2.6		Disable external peripherals
 .EQU pin_midi_pwr,				0a7h	; p2.7		MIDI Interface Enable
 
-;============================== DSP CONTROL REGISTERS ============================
+;=============================== DSP CORE REGISTERS ====================================
 .EQU command_byte,				20h		;			Current DSP Command Byte (Host→DSP)
 .EQU rem_xfer_len_lo,			21h		;			Remaining Transfer Length Low
 .EQU rem_xfer_len_hi,			22h		;			Remaining Transfer Length High
-.EQU command_reg,				30h		;			Command Register (Bitmask)
+
+;---------------------------------- Status System --------------------------------------
 .EQU status_reg,				23h		;			Status Register (Bitmask)
+
+;---------------------------------- Control System -------------------------------------
 .EQU auxiliary_reg,				24h		;			Auxiliary Register (Bitmask)
+;---------------------------------- Identification System ------------------------------
 .EQU dsp_dma_id0,				25h		;			DSP/DMA Identification Byte 0
 .EQU dsp_dma_id1,				26h		;			DSP/DMA Identification Byte 1
 
-;---------------------------------- Vector Systems --------------------------------
 .EQU vector_lo,					29h		;			Interrupt Vector Low Byte
-.EQU csp_lock_count,					2bh		;			Interrupt Vector High Byte
 
-.EQU dma8_config_temp,			2ch		; 2ch		8-bit DMA Temporary storage
-.EQU dma8_autoreinit_en,		64h		; 2ch.4		8-bit DMA auto-reinit enable
-.EQU dma8_timing_override,		65h		; 2ch.5		8-bit DMA timing override
-.EQU dma16_config_temp,			2dh		; 2dh		16-bit DMA Temporary storage
-.EQU dma16_autoreinit_en,		6ch		; 2dh.4		16-bit DMA auto-reinit enable
-.EQU dma16_ch1_altmode,			6dh		; 2dh.5		16-bit DMA alternate addressing
-.EQU dma_control_temp,			2eh		; 2eh		DMA Temporary storage
+;---------------------------------- Command System -------------------------------------
+.EQU command_reg,				30h		;			Command Register (Bitmask)
 
-;---------------------------------- Warm Boot ------------------------------------
+;----------------------------------- Warm Boot System ----------------------------------
 .EQU warmboot_magic1,			31h		;			Warm Boot Signature Byte 1
 .EQU warmboot_magic2,			32h		;			Warm Boot Signature Byte 2
 
-;=============================== SFR BIT EQUATES =================================
-;--- Status Register (23h) ---
-.EQU dma8_start_pending,		18h		; 23h.0 	Pending 8-bit DMA transfer start
-.EQU dma16_start_pending,		19h		; 23h.1 	Pending 16-bit DMA transfer start
-.EQU dma8_autoreinit_pause,		1ah		; 23h.2		8-bit DMA auto-reinit paused state
-.EQU dma16_autoreinit_pause,	1bh		; 23h.3		16-bit DMA auto-reinit paused state
 .EQU mute_enable,				1ch		; 23h.4		Mute control (0 = muted, 1 = unmuted)
 .EQU midi_active,				1dh		; 23h.5		MIDI subsystem active
-.EQU timer0_auto_reload_en,		1eh		; 23h.6		Timer 0 auto-reload enable
 .EQU dma_timing_status,			1fh		; 23h.7		DMA Timing status
 
-;--- Control Register (24h) ---
 .EQU host_cmd_pending,			20h		; 24h.0		Host Command Pending
-.EQU dma8_active,				21h		; 24h.1		DMA transfer in progress
-.EQU dma8_mode,					22h		; 24h.2		8-bit DMA mode
-.EQU dma16_active,				23h		; 24h.3		16-bit DMA transfer in progress
-.EQU dma16_mode,				24h		; 24h.4		16-bit DMA mode
 .EQU midi_timestamp_en,			25h		; 24h.5		MIDI timestamp counter enable
 
-;--- Extended Control Register (2fh) ---
+;=============================== ADVANCED CONTROLLERS ==================================
+;----------------------------------- DMA Configuration ---------------------------------
+.EQU dma_control_temp,			2eh		; 2eh		DMA Temporary storage
+.EQU dma_safety_override_en,	0a3h	; p2.3		DMA timing safety override
 .EQU diagnostic_flag,			7dh		; 2fh.5		Diagnostic flag (challenge/resp)
 
-.EQU acc_dma8_start_pending,	0e0h	; acc.0		8-bit DMA start pending
-.EQU acc_dma16_start_pending,	0e1h	; acc.1		16-bit DMA start pending
-.EQU acc_dma8_mode_active,		0e2h	; acc.2		8-bit DMA Active?
-.EQU acc_dma8_autoreinit,		0e4h	; acc.4		8-bit DMA auto-reinit toggle
-.EQU acc_dma16_autoreinit,		0e5h	; acc.5		16-bit DMA auto-reinit toggle
+;----------------------------------- CSP Subsystem -------------------------------------
+.EQU csp_program_id_lo,			08h		; rb1r0		DMA Command Parameter 0
+.EQU csp_program_id_hi,			09h		; rb1r1		DMA Command Parameter 1
 
-.EQU acc_buffer_ready,			0e6h	; acc.6		Buffer/data ready flag
-.EQU acc_addr_hi_or_mode,		0e7h	; acc.7		Address high bit or mode
-
-;---------------------------------- CSP Pins ------------------------------------
 .EQU csp_data_port,				80h		; 			CSP Data/Command port
 .EQU csp_status_port,			81h		; 			CSP Status/Handshake port
 .EQU csp_control_port,			82h		; 			CSP Control port
 .EQU csp_program_port,			83h		; 			CSP Program upload port
+
+.EQU csp_lock_count,					2bh		;			Interrupt Vector High Byte
 
 ;============================= INTERRUPT VECTOR TABLE ============================
 ;-------------------- Vector Offsets for Critical Hardware Events ----------------
@@ -173,9 +183,9 @@ int0_main_table:
 
 ;------------------------------- Int0 Group Handlers -----------------------------
 int0_dac_silence:		ljmp	vector_dac_silence		; DAC playback of silence.
-int0_dma_dac_adpcm2:	ljmp	vector_dma_dac_adpcm2	; DAC playback, 2-bit ADPCM
-int0_dma_dac_adpcm2_6:	ljmp	vector_dma_dac_adpcm2_6	; DAC playback, 2.6-bit ADPCM
-int0_dma_dac_adpcm4:	ljmp	vector_dma_dac_adpcm4	; DAC playback, 4-bit ADPCM
+int0_dma_dac_adpcm2:	ljmp	vector_dma_dac_adpcm2	; DAC playback, 2bit ADPCM
+int0_dma_dac_adpcm2_6:	ljmp	vector_dma_dac_adpcm2_6	; DAC playback, 2.6bit ADPCM
+int0_dma_dac_adpcm4:	ljmp	vector_dma_dac_adpcm4	; DAC playback, 4bit ADPCM
 int0_midi_handler:		ljmp	vector_midi_handler		; MIDI Playback
 
 int0_none_handler:
@@ -260,7 +270,7 @@ X00ae:	mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -275,7 +285,7 @@ X00bd:	mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -296,17 +306,17 @@ X00ec:	jnb		dma8_start_pending,vector_dma8_playback_end
 
 X00f7:	clr		dma8_mode
 		clr		dma8_active
-		mov		a,dma_xfer_len_lo
+		mov		a,dma8_xfer_len_lo
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_xfer_len_hi
+		mov		a,dma8_xfer_len_hi
 		mov		r0,#0ch
 		movx	@r0,a
 		mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -332,7 +342,7 @@ X0122:	jb		pin_dsp_data_rdy,X0129
 X0129:	mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -346,7 +356,7 @@ X0137:	mov		r0,#10h
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -365,16 +375,16 @@ X015f:	jnb		dma8_autoreinit_pause,vector_dma16_playback_end
 
 X016a:	clr		dma16_mode
 		clr		dma16_active
-		mov		a,dma_block_size_lo
+		mov		a,dma16_block_size_lo
 		mov		r0,#13h
 		movx	@r0,a
-		mov		a,dma_block_size_hi
+		mov		a,dma16_block_size_hi
 		mov		r0,#14h
 		movx	@r0,a
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -410,7 +420,7 @@ vector_adpcm2_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -421,13 +431,13 @@ vector_adpcm2_byte_available:
 vector_dma_dac_adpcm2_shiftin:
 		ljmp	vector_adpcm_2_decode
 
-X01c5:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X01c5:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X01d1:	movx	a,@r0
-		jnb		acc_buffer_ready,X01d1
+		jnb		acc_dma8_mode_select,X01d1
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -436,7 +446,7 @@ X01d1:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -444,13 +454,13 @@ X01d1:	movx	a,@r0
 
 X0204:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0214:	movx	a,@r0
-		jnb		acc_buffer_ready,X0214
+		jnb		acc_dma8_mode_select,X0214
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -459,7 +469,7 @@ X0214:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -474,7 +484,7 @@ vector_adpcm2_get_data_lo:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0200:	movx	a,@r0
-		jnb		acc_buffer_ready,X0200
+		jnb		acc_dma8_mode_select,X0200
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -512,7 +522,7 @@ vector_adpcm4_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -523,13 +533,13 @@ vector_adpcm4_byte_available:
 vector_dma_dac_adpcm4_shiftin:
 		ljmp	vector_adpcm_4_decode
 
-X026e:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X026e:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X027a:	movx	a,@r0
-		jnb		acc_buffer_ready,X027a
+		jnb		acc_dma8_mode_select,X027a
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -538,7 +548,7 @@ X027a:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -546,13 +556,13 @@ X027a:	movx	a,@r0
 
 X02ad:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X02bd:	movx	a,@r0
-		jnb		acc_buffer_ready,X02bd
+		jnb		acc_dma8_mode_select,X02bd
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -561,7 +571,7 @@ X02bd:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -576,7 +586,7 @@ vector_adpcm4_get_data_lo:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X029f:	movx	a,@r0
-		jnb		acc_buffer_ready,X029f
+		jnb		acc_dma8_mode_select,X029f
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -613,7 +623,7 @@ X02e6:	dec		r3
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -623,13 +633,13 @@ X02e6:	dec		r3
 vector_dma_dac_adpcm2_6_shiftin:
 		ljmp	vector_adpcm_2_6_decode
 
-X032f:	mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+X032f:	mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X033b:	movx	a,@r0
-		jnb		acc_buffer_ready,X033b
+		jnb		acc_dma8_mode_select,X033b
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -638,7 +648,7 @@ X033b:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -646,13 +656,13 @@ X033b:	movx	a,@r0
 
 X0354:	clr		dma8_mode
 		clr		dma8_active
-		mov		rem_xfer_len_lo,dma_xfer_len_lo
-		mov		rem_xfer_len_hi,dma_xfer_len_hi
+		mov		rem_xfer_len_lo,dma8_xfer_len_lo
+		mov		rem_xfer_len_hi,dma8_xfer_len_hi
 		setb	pin_dma_req
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0364:	movx	a,@r0
-		jnb		acc_buffer_ready,X0364
+		jnb		acc_dma8_mode_select,X0364
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -661,7 +671,7 @@ X0364:	movx	a,@r0
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -674,7 +684,7 @@ X0317:	dec		rem_xfer_len_lo
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0321:	movx	a,@r0
-		jnb		acc_buffer_ready,X0321
+		jnb		acc_dma8_mode_select,X0321
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -706,7 +716,7 @@ vector_dac_silence_byte_available:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -816,8 +826,8 @@ cold_boot:
 		mov		r7,#0
 		mov		dsp_dma_id0,#0aah
 		mov		dsp_dma_id1,#96h
-		mov		dma_block_len_lo,#0ffh
-		mov		dma_block_len_hi,#7
+		mov		dma8_block_len_lo,#0ffh
+		mov		dma8_block_len_hi,#7
 		mov		status_reg,#0
 
 ;------------------------------- Warm State Restorer -----------------------------
@@ -966,9 +976,9 @@ X051a:	jnb		dma8_mode,X0535
 		clr		dma8_mode
 		lcall	dsp_input_data
 		lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		clr		dma8_ch1_enable
 		setb	ex1
@@ -1004,17 +1014,17 @@ X0559:	lcall	dsp_input_data
 		clr		acc_dma8_autoreinit
 		jnb		dma8_autoreinit_en,X0567
 		setb	acc_dma8_autoreinit
-X0567:	setb	acc_buffer_ready
+X0567:	setb	acc_dma8_mode_select
 		jnb		dma8_timing_override,X056e
-		clr		acc_buffer_ready
+		clr		acc_dma8_mode_select
 X056e:	mov		r0,#4
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_block_len_lo,a
+		mov		dma8_block_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_block_len_hi,a
+		mov		dma8_block_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
 		setb	dma_safety_override_en
@@ -1077,9 +1087,9 @@ X05d0:	jnb		dma16_mode,X05eb
 		clr		dma16_mode
 		lcall	dsp_input_data
 		lcall	dsp_input_data
-		mov		dma_block_size_lo,a
+		mov		dma16_block_size_lo,a
 		lcall	dsp_input_data
-		mov		dma_block_size_hi,a
+		mov		dma16_block_size_hi,a
 		setb	dma16_active
 		clr		dma16_ch1_enable
 		setb	ex1
@@ -1115,17 +1125,17 @@ X060f:	lcall	dsp_input_data
 		clr		acc_dma16_autoreinit
 		jnb		dma16_autoreinit_en,X061d
 		setb	acc_dma16_autoreinit
-X061d:	setb	acc_addr_hi_or_mode
-		jnb		dma16_ch1_altmode,X0624
-		clr		acc_addr_hi_or_mode
+X061d:	setb	acc_dma16_mode_select
+		jnb		dma16_timing_override,X0624
+		clr		acc_dma16_mode_select
 X0624:	mov		r0,#4
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_len_temp_lo,a
+		mov		dma16_len_temp_lo,a
 		mov		r0,#13h
 		movx	@r0,a
 		lcall	dsp_input_data
-		mov		dma_len_temp_hi,a
+		mov		dma16_len_temp_hi,a
 		mov		r0,#14h
 		movx	@r0,a
 		setb	dma_safety_override_en
@@ -1656,13 +1666,13 @@ X0872:	jnb		pin_dsp_data_rdy,X0872
 ; [48h] Set DMA Block Size (Index 8)
 ; Configures transfer block size
 ; Input: 16-bit block size
-; Affects: dma_block_len_lo/hi registers
+; Affects: dma8_block_len_lo/hi registers
 ;---------------------------------------------------------------------------------
 cmd_set_dma_block_size:
 		lcall	dsp_input_data
-		mov		dma_block_len_lo,a
+		mov		dma8_block_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_block_len_hi,a
+		mov		dma8_block_len_hi,a
 		ljmp	cmdg_4_exit
 
 cmdg_4_exit:
@@ -1683,6 +1693,7 @@ convert_samplerate:
 ; Time Constant → Samplerate Register Mapping
 ; 256-entry table covering 5kHz-45kHz samplerates
 ; Special values: 0FFh = 45.32kHz, 0EBh = Max Valid Input
+; Table has an error near the bottom, 0c8h instead of 64h.
 ;--------------------------------------------------------------------------------
 samplerate_table:	
 		.db	15h,16h,16h,16h,16h,16h,16h,16h
@@ -1753,7 +1764,7 @@ X09ca:	mov		a,#17h
 		mov		dma_timing_control,a
 		mov		a,timer0_counter
 		addc	a,#0
-		mov		a,timer0_counter
+		mov		a,timer0_counter					; Error, shouldnt be here.
 		rrc		a
 		mov		timer0_counter,a
 		mov		a,dma_timing_control
@@ -1937,7 +1948,7 @@ cmd_F2:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -1955,7 +1966,7 @@ cmd_F3:
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -2170,7 +2181,7 @@ midi_nowrap_readbuffer:
 		movx	a,@r0
 		anl		a,#3
 		movx	@r0,a
-		orl		a,#csp_data_port
+		orl		a,#80h
 		movx	@r0,a
 		anl		a,#7fh
 		movx	@r0,a
@@ -2236,7 +2247,7 @@ X0bea:	jnb		ti,midi_io_handler
 		mov		r0,#2
 		movx	a,@r0
 		setb	pin_dsp_busy
-		jnb		acc_buffer_ready,midi_io_handler
+		jnb		acc_dma8_mode_select,midi_io_handler
 		mov		r0,#1
 		movx	a,@r0
 		clr		ti
@@ -2259,7 +2270,7 @@ X0c09:	ret
 midi_buffer_process:
 		mov		r0,#2
 		movx	a,@r0
-		jb		acc_addr_hi_or_mode,X0c1b
+		jb		acc_dma16_mode_select,X0c1b
 		sjmp	X0bea
 
 X0c12:	mov		a,sbuf
@@ -2267,6 +2278,7 @@ X0c12:	mov		a,sbuf
 		clr		ri
 		sjmp	X0bea
 
+		; Impossible to be called?
 		cjne	r4,#midi_buffer_size,X0bd6
 		ljmp	X0c25
 
@@ -2309,11 +2321,11 @@ cmdg_rec:
 dma_rec_autoinit:
 		lcall	X0a26
 		setb	dma8_mode
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		rem_xfer_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -2334,13 +2346,13 @@ X0c95:	jnb		pin_dsp_data_rdy,X0c95
 		nop	
 		nop	
 		movx	a,@r0
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 X0c9f:	jnb		pin_dsp_data_rdy,X0c9f
 		mov		r0,#0
 		nop	
 		nop	
 		movx	a,@r0
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		ljmp	X0d1d
 
@@ -2394,7 +2406,7 @@ dma_rec_direct:
 		movx	@r0,a
 		mov		r0,#17h
 X0d0e:	movx	a,@r0
-		jnb		acc_addr_hi_or_mode,X0d0e
+		jnb		acc_dma16_mode_select,X0d0e
 		mov		r0,#1bh
 		movx	a,@r0
 X0d15:	jb		pin_host_data_rdy,X0d15
@@ -2447,10 +2459,10 @@ hs_dma_playback:
 hs_dma_playback_exit:
 		clr		dma8_mode
 hs_dma_continuous:
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		r0,#0ch
 		movx	@r0,a
 		mov		warmboot_magic1,#34h
@@ -2495,11 +2507,11 @@ cmdg_dma_dac1:
 dma_dac1_autoinit:
 		lcall	X0a26
 		setb	dma8_mode
-		mov		a,dma_block_len_lo
+		mov		a,dma8_block_len_lo
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		mov		a,dma_block_len_hi
+		mov		a,dma8_block_len_hi
 		mov		rem_xfer_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -2518,9 +2530,9 @@ dma_dac1_normal:
 		jnb		command_byte_1,X0dce
 		clr		ex0
 X0dce:	lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
 		ljmp	X0e27
@@ -2572,7 +2584,7 @@ dma_dac1_adpcm_use_2bit:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0e41:	movx	a,@r0
-		jnb		acc_buffer_ready,X0e41
+		jnb		acc_dma8_mode_select,X0e41
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
@@ -2590,7 +2602,7 @@ dma_dac1_reference:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0e54:	movx	a,@r0
-		jnb		acc_buffer_ready,X0e54
+		jnb		acc_dma8_mode_select,X0e54
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r2,a
@@ -2642,8 +2654,8 @@ cmdg_dma_dac2:
 ;-----------------------------------------------------------------------------------
 dma_dac2_adpcm_autoinit:
 		setb	dma8_mode
-		mov		rem_xfer_len_lo,dma_block_len_lo
-		mov		rem_xfer_len_hi,dma_block_len_hi
+		mov		rem_xfer_len_lo,dma8_block_len_lo
+		mov		rem_xfer_len_hi,dma8_block_len_hi
 		ljmp	X0eb8
 
 ;------------------------------- Single-Cycle ADPCM Transfer ------------------------
@@ -2658,9 +2670,9 @@ dma_dac2_adpcm:
 
 X0e97:	clr		ex0
 		lcall	dsp_input_data
-		mov		dma_xfer_len_lo,a
+		mov		dma8_xfer_len_lo,a
 		lcall	dsp_input_data
-		mov		dma_xfer_len_hi,a
+		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
 		ljmp	check_cmd
@@ -2701,7 +2713,7 @@ dma_dac2_adpcm_use_2_6bit:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0ed8:	movx	a,@r0
-		jnb		acc_buffer_ready,X0ed8
+		jnb		acc_dma8_mode_select,X0ed8
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r2,a
@@ -2722,7 +2734,7 @@ dma_dac2_no_reference:
 		clr		pin_dma_req
 		mov		r0,#0fh
 X0ef0:	movx	a,@r0
-		jnb		acc_buffer_ready,X0ef0
+		jnb		acc_dma8_mode_select,X0ef0
 		mov		r0,#1fh
 		movx	a,@r0
 		mov		r6,a
