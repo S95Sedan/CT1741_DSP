@@ -168,7 +168,7 @@ int1_vector:			ljmp	int1_main_handler
 ;---------------------------------------------------------------------------------
 int0_main_handler:
 		setb	pin_dsp_busy
-		; Set DMA8 Mode
+		; Set DMA8 mode
 		push	acc
 		mov		r0,#5
 		movx	a,@r0
@@ -187,8 +187,21 @@ int0_main_handler:
 		jmp		@a+dptr
 
 int0_main_table:
-		.db		1eh,0fh,12h,15h,18h,1bh,1eh,1eh
-		.db		1eh,1eh,1eh,1eh,1eh,1eh,1eh
+	.db int0_none_handler		- int0_main_table ; 0
+	.db int0_dac_silence		- int0_main_table ; 1
+	.db int0_dma_dac_adpcm2		- int0_main_table ; 2
+	.db int0_dma_dac_adpcm2_6	- int0_main_table ; 3
+	.db int0_dma_dac_adpcm4		- int0_main_table ; 4
+	.db int0_midi_handler		- int0_main_table ; 5
+	.db int0_none_handler		- int0_main_table ; 6
+	.db int0_none_handler		- int0_main_table ; 7
+	.db int0_none_handler		- int0_main_table ; 8
+	.db int0_none_handler		- int0_main_table ; 9
+	.db int0_none_handler		- int0_main_table ; 10
+	.db int0_none_handler		- int0_main_table ; 11
+	.db int0_none_handler		- int0_main_table ; 12
+	.db int0_none_handler		- int0_main_table ; 13
+	.db int0_none_handler		- int0_main_table ; 14
 
 ;------------------------------- Int0 Group Handlers -----------------------------
 int0_dac_silence:		ljmp	vector_dac_silence		; DAC playback of silence.
@@ -1120,8 +1133,22 @@ dispatch_cmd:
 ;  15   |  F0h    | vector_cmdg_aux				(24h)
 ; ----------------------------------------------------
 table_major_cmds:
-		.db	12h,15h,1eh,21h,27h,10h,10h,18h
-		.db	2ah,1bh,10h,36h,33h,30h,2dh,24h
+	.db vector_cmdg_csp			- table_major_cmds ; 00h
+	.db vector_cmdg_dac1		- table_major_cmds ; 10h
+	.db vector_cmdg_rec			- table_major_cmds ; 20h
+	.db vector_cmdg_midi		- table_major_cmds ; 30h
+	.db vector_cmdg_setup		- table_major_cmds ; 40h
+	.db vector_cmdg_none		- table_major_cmds ; 50h
+	.db vector_cmdg_none		- table_major_cmds ; 60h
+	.db vector_cmdg_dac2		- table_major_cmds ; 70h
+	.db vector_cmdg_silence		- table_major_cmds ; 80h
+	.db vector_cmdg_hs			- table_major_cmds ; 90h
+	.db vector_cmdg_none		- table_major_cmds ; A0h
+	.db vector_cmd_dma16		- table_major_cmds ; B0h
+	.db vector_cmd_dma8			- table_major_cmds ; C0h
+	.db vector_cmdg_misc		- table_major_cmds ; D0h
+	.db vector_cmdg_ident		- table_major_cmds ; E0h
+	.db vector_cmdg_aux			- table_major_cmds ; F0h
 
 ;------------------------------- Command Group Handlers --------------------------
 vector_cmdg_none:		sjmp check_cmd			; Groups 5,6,A (Invalid)
@@ -1165,10 +1192,10 @@ X0512:	jnb		command_byte_2,X051a
 
 X051a:	jnb		dma8_mode,X0535
 		clr		dma8_mode
-		lcall	dsp_input_data
-		lcall	dsp_input_data
+		lcall	dsp_data_read
+		lcall	dsp_data_read
 		mov		dma8_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		clr		dma8_ch1_enable
@@ -1191,7 +1218,7 @@ X0550:	lcall	dma16_start
 		ljmp	X0556
 
 X0556:	jnb		command_byte_0,X0559
-X0559:	lcall	dsp_input_data
+X0559:	lcall	dsp_data_read
 		mov		dma8_config_temp,a
 		mov		a,dma_control_temp
 		clr		acc_dma8_autoreinit
@@ -1209,11 +1236,11 @@ X056e:	mov		r0,#4
 		mov		a,#0
 		movx	@r0,a
 		setb	ea
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_block_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_block_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -1261,10 +1288,10 @@ X05c8:	jnb		command_byte_2,X05d0
 
 X05d0:	jnb		dma16_mode,X05eb
 		clr		dma16_mode
-		lcall	dsp_input_data
-		lcall	dsp_input_data
+		lcall	dsp_data_read
+		lcall	dsp_data_read
 		mov		dma16_block_size_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma16_block_size_hi,a
 		setb	dma16_active
 		clr		dma16_ch1_enable
@@ -1287,7 +1314,7 @@ X0606:	lcall	dma16_start
 		ljmp	X060c
 
 X060c:	jnb		command_byte_0,X060f
-X060f:	lcall	dsp_input_data
+X060f:	lcall	dsp_data_read
 		mov		dma16_config_temp,a
 		mov		a,dma_control_temp
 		clr		acc_dma16_autoreinit
@@ -1298,11 +1325,11 @@ X061d:	setb	acc_dma16_mode_select
 		clr		acc_dma16_mode_select
 X0624:	mov		r0,#4
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma16_len_temp_lo,a
 		mov		r0,#13h
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma16_len_temp_hi,a
 		mov		r0,#14h
 		movx	@r0,a
@@ -1360,8 +1387,22 @@ cmdg_csp:
 ;  15   |  0Fh    | cmd_xbus_read				(86h)
 ; ----------------------------------------------------
 table_csp_cmds:
-		.db	75h,0f8h,10h,43h,4ch,34h,55h,5ah
-		.db	6ch,91h,67h,9dh,0c8h,75h,78h,86h
+	.db cmd_0_none				- table_csp_cmds ; 00h
+	.db cmd_csp_upload			- table_csp_cmds ; 01h
+	.db cmd_csp_init			- table_csp_cmds ; 02h
+	.db cmd_csp_read_data		- table_csp_cmds ; 03h
+	.db cmd_csp_control_mode	- table_csp_cmds ; 04h
+	.db cmd_csp_dual_write		- table_csp_cmds ; 05h
+	.db cmd_csp_lock_inc		- table_csp_cmds ; 06h
+	.db cmd_csp_lock_dec		- table_csp_cmds ; 07h
+	.db cmd_csp_version			- table_csp_cmds ; 08h
+	.db cmd_csp_program_id		- table_csp_cmds ; 09h
+	.db cmd_csp_program_lock	- table_csp_cmds ; 0Ah
+	.db cmd_csp_block_write		- table_csp_cmds ; 0Bh
+	.db cmd_csp_block_read		- table_csp_cmds ; 0Ch
+	.db cmd_0_none				- table_csp_cmds ; 0Dh
+	.db cmd_xbus_write			- table_csp_cmds ; 0Eh
+	.db cmd_xbus_read			- table_csp_cmds ; 0Fh
 
 ;=============================== CSP PORT CONFIGURATION ==============================
 ;------------------------------- [02h] CSP Initialize ------------------------------
@@ -1369,7 +1410,7 @@ table_csp_cmds:
 ; Uses ports 80h (data), 81h (status), F2h signature
 ;---------------------------------------------------------------------------------
 cmd_csp_init:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_data_port
 		movx	@r0,a
 		mov		a,#0f2h
@@ -1396,10 +1437,10 @@ csp_init_done:
 ; Input: Byte1 → 80h (data), Byte2 → 81h (status)
 ;---------------------------------------------------------------------------------
 cmd_csp_dual_write:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_data_port
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_status_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
@@ -1412,7 +1453,7 @@ cmd_csp_dual_write:
 cmd_csp_read_data:
 		mov		r0,#csp_data_port
 		movx	a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_0_exit
 
 ;------------------------------- [04h] CSP Set Mode ---------------------------------
@@ -1420,7 +1461,7 @@ cmd_csp_read_data:
 ; Input: Control byte → 82h (control port)
 ;---------------------------------------------------------------------------------
 cmd_csp_control_mode:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_control_port
 		movx	@r0,a
 		ljmp	cmdg_0_exit
@@ -1452,7 +1493,7 @@ csp_dec_valid:
 ;---------------------------------------------------------------------------------
 cmd_csp_program_lock:
 		mov		a,csp_lock_count
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 
 ;=============================== CSP VERSION CONTROL ================================
 ;------------------------------- [08h] CSP Get Version ------------------------------
@@ -1462,7 +1503,7 @@ cmd_csp_program_lock:
 cmd_csp_version:
 		mov		r0,#csp_control_port
 		movx	a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_0_exit
 
 ;=============================== INVALID COMMANDS ================================
@@ -1479,9 +1520,9 @@ cmd_0_none:
 ; Security: No validation performed
 ;---------------------------------------------------------------------------------
 cmd_xbus_write:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		b,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,b
 		movx	@r0,a
 		ljmp	wait_for_cmd
@@ -1491,10 +1532,10 @@ cmd_xbus_write:
 ; Input: [Address] → Returns value
 ;---------------------------------------------------------------------------------
 cmd_xbus_read:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,a
 		movx	a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 cmdg_0_exit:
 		ljmp	wait_for_cmd
 
@@ -1505,9 +1546,9 @@ cmdg_0_exit:
 ;---------------------------------------------------------------------------------
 cmd_csp_program_id:
 		mov		a,csp_program_id_lo
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		mov		a,csp_program_id_hi
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		sjmp	cmdg_0_exit
 
 ;=============================== CSP BLOCK TRANSFERS ================================
@@ -1517,7 +1558,7 @@ cmd_csp_program_id:
 ; Uses C0h handshake protocol on status port
 ;---------------------------------------------------------------------------------
 cmd_csp_block_write:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_lo,a
 		mov		r0,#csp_data_port
 		movx	@r0,a
@@ -1530,10 +1571,10 @@ csp_block_write_wait:
 		movx	a,@r0
 		cjne	a,dma_control_temp,csp_block_write_wait
 csp_block_write_loop:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_data_port
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_status_port
 		movx	@r0,a
 		clr		a
@@ -1550,7 +1591,7 @@ csp_block_write_next:
 ; Uses C1h handshake protocol on status port
 ;---------------------------------------------------------------------------------
 cmd_csp_block_read:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_lo,a
 		mov		r0,#csp_data_port
 		movx	@r0,a
@@ -1568,10 +1609,10 @@ csp_block_read_wait:
 csp_block_read_loop:
 		mov		r0,#csp_data_port
 		movx	a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		mov		r0,#csp_data_port
 		movx	a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		clr		a
 		cjne	a,rem_xfer_len_lo,csp_block_read_next
 		sjmp	cmdg_0_exit
@@ -1589,7 +1630,7 @@ csp_block_read_next:
 cmd_csp_upload:
 		mov		a,csp_lock_count
 		cjne	a,#0,cmdg_0_exit
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		mov		a,#0
 		mov		33h,a
 		mov		34h,a
@@ -1597,11 +1638,11 @@ cmd_csp_upload:
 		movx	@r0,a
 		mov		r0,#csp_status_port
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		clr		c
 		subb	a,#4
 		mov		rem_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		jnc		csp_upload_calc_len
 		dec		a
 csp_upload_calc_len:
@@ -1613,7 +1654,7 @@ csp_upload_calc_len:
 		mov		r0,#csp_control_port
 		movx	@r0,a
 csp_upload_loop:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,#csp_program_port
 		movx	@r0,a
 		add		a,33h
@@ -1624,9 +1665,9 @@ csp_upload_next:
 		clr		a
 		cjne	a,rem_xfer_len_lo,csp_upload_dec_lo
 		cjne	a,rem_xfer_len_hi,csp_upload_dec_hi
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		35h,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		36h,a
 		mov		a,#0
 		mov		r0,#csp_control_port
@@ -1647,10 +1688,10 @@ csp_upload_next:
 csp_upload_fail:
 		mov		a,#0ffh
 csp_upload_fail_code:
-		lcall	dsp_output_data
-		lcall	dsp_input_data
+		lcall	dsp_data_write
+		lcall	dsp_data_read
 		mov		csp_program_id_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		csp_program_id_hi,a
 		ljmp	cmdg_0_exit
 
@@ -1694,8 +1735,22 @@ cmdg_setup:
 ;  15   |  4Fh    | cmd_control_timer			(2ch)
 ; ----------------------------------------------------
 table_setup_cmds:
-		.db	6fh,82h,82h,9fh,10h,15h,1ah,1fh
-		.db	0c0h,24h,24h,24h,51h,60h,27h,2ch
+	.db cmd_set_time_constant		- table_setup_cmds ; 40h
+	.db cmd_set_output_samplerate	- table_setup_cmds ; 41h
+	.db cmd_set_input_samplerate	- table_setup_cmds ; 42h
+	.db cmd_set_dma_transfer_count	- table_setup_cmds ; 43h
+	.db cmd_pause_dma_8bit			- table_setup_cmds ; 44h
+	.db cmd_continue_dma_8bit		- table_setup_cmds ; 45h
+	.db cmd_pause_dma_16bit			- table_setup_cmds ; 46h
+	.db cmd_continue_dma_16bit		- table_setup_cmds ; 47h
+	.db cmd_set_dma_block_size		- table_setup_cmds ; 48h
+	.db cmd_4_none					- table_setup_cmds ; 49h
+	.db cmd_4_none					- table_setup_cmds ; 4Ah
+	.db cmd_4_none					- table_setup_cmds ; 4Bh
+	.db cmd_dsp_store_data			- table_setup_cmds ; 4Ch
+	.db cmd_dsp_process_data		- table_setup_cmds ; 4Dh
+	.db cmd_set_timer_count			- table_setup_cmds ; 4Eh
+	.db cmd_control_timer			- table_setup_cmds ; 4Fh
 
 ;============================= DMA FLOW CONTROL ==================================
 ;------------------------------- Pause/Resume 8-bit DMA -------------------------
@@ -1740,7 +1795,7 @@ cmd_4_none:
 ;------------------------------- Timer Configuration -----------------------------
 ; [4Eh] Set Timer Count (Index 14)
 ; Programs Timer 0 with 16-bit inverted value
-; Input: Two bytes (timer low/high via dsp_input_data)
+; Input: Two bytes (timer low/high via dsp_data_read)
 ; Affects: TL0/TH0, timer0_tlow/timer0_thigh (stored reload values)
 ;---------------------------------------------------------------------------------
 cmd_set_timer_count:
@@ -1760,11 +1815,11 @@ cmd_control_timer:
 		ljmp	cmdg_4_exit
 
 X081e:	setb	timer0_auto_reload_en
-X0820:	lcall	dsp_input_data
+X0820:	lcall	dsp_data_read
 		cpl		a
 		mov		tl0,a
 		mov		timer0_tlow,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		cpl		a
 		mov		th0,a
 		mov		timer0_thigh,a
@@ -1778,11 +1833,11 @@ X0820:	lcall	dsp_input_data
 ; Input: [0-3][value] (register index + data)
 ;---------------------------------------------------------------------------------
 cmd_dsp_store_data:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		anl		a,#3
 		add		a,#1bh
 		mov		r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		movx	@r0,a
 		ljmp	cmdg_4_exit
 
@@ -1790,15 +1845,15 @@ cmd_dsp_store_data:
 ; [4Dh] Process Data (Index 13)  
 ; Reads from DSP registers 1Bh-1Eh
 ; Input: [0-3] (register index)
-; Output: Register value via dsp_output_data
+; Output: Register value via dsp_data_write
 ;---------------------------------------------------------------------------------
 cmd_dsp_process_data:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		anl		a,#3
 		add		a,#1bh
 		mov		r0,a
 		mov		a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_4_exit
 
 ;============================ SAMPLERATE MANAGEMENT ==============================
@@ -1808,7 +1863,7 @@ cmd_dsp_process_data:
 ; Uses samplerate_table for hardware mapping
 ;---------------------------------------------------------------------------------
 cmd_set_time_constant:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		cjne	a,#0ebh,X085b
 X085b:	jc		X085f
 		mov		a,#0ebh
@@ -1873,9 +1928,9 @@ X088f:	jnb		pin_dsp_data_rdy,X088f
 ; Affects: dma8_block_len_lo/hi registers
 ;---------------------------------------------------------------------------------
 cmd_set_dma_block_size:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_block_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_block_len_hi,a
 		ljmp	cmdg_4_exit
 
@@ -2081,8 +2136,22 @@ cmdg_aux:
 ;  15   |  FFh    | cmd_f_none					(41h)
 ; ----------------------------------------------------
 table_aux_cmds:
-		.db	7eh,41h,44h,53h,61h,41h,41h,41h
-		.db	6eh,10h,1bh,31h,39h,29h,41h,41h
+	.db cmd_init_dma				- table_aux_cmds ; F0h
+	.db cmd_f_none					- table_aux_cmds ; F1h
+	.db cmd_reset_control_dma8		- table_aux_cmds ; F2h
+	.db cmd_reset_control_dma16		- table_aux_cmds ; F3h
+	.db cmd_dsp_identify			- table_aux_cmds ; F4h
+	.db cmd_f_none					- table_aux_cmds ; F5h
+	.db cmd_f_none					- table_aux_cmds ; F6h
+	.db cmd_f_none					- table_aux_cmds ; F7h
+	.db cmd_mailbox_reset_or_diag	- table_aux_cmds ; F8h
+	.db cmd_internal_ram_peek		- table_aux_cmds ; F9h
+	.db cmd_internal_ram_poke		- table_aux_cmds ; FAh
+	.db cmd_dsp_status				- table_aux_cmds ; FBh
+	.db cmd_dsp_auxiliary_status	- table_aux_cmds ; FCh
+	.db cmd_dsp_command_status		- table_aux_cmds ; FDh
+	.db cmd_f_none					- table_aux_cmds ; FEh
+	.db cmd_f_none					- table_aux_cmds ; FFh
 
 ;============================= MEMORY ACCESS COMMANDS ==============================
 ;------------------------------- Internal RAM Peek ---------------------------------
@@ -2093,10 +2162,10 @@ table_aux_cmds:
 ; Affects: R0, A
 ;-----------------------------------------------------------------------------------
 cmd_internal_ram_peek:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,a
 		mov		a,@r0
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_f_exit
 
 ;------------------------------- Internal RAM Poke ---------------------------------
@@ -2106,9 +2175,9 @@ cmd_internal_ram_peek:
 ; Affects: R0, B, A
 ;-----------------------------------------------------------------------------------
 cmd_internal_ram_poke:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		b,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		r0,b
 		mov		@r0,a
 		ljmp	cmdg_f_exit
@@ -2120,7 +2189,7 @@ cmd_internal_ram_poke:
 ;-----------------------------------------------------------------------------------
 cmd_dsp_command_status:
 		mov		a,command_reg
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_f_exit
 
 ;------------------------------- DSP Status Report ---------------------------------
@@ -2129,7 +2198,7 @@ cmd_dsp_command_status:
 ;-----------------------------------------------------------------------------------
 cmd_dsp_status:
 		mov		a,status_reg
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_f_exit
 
 ;------------------------------- Auxiliary Status Report --------------------------
@@ -2138,7 +2207,7 @@ cmd_dsp_status:
 ;-----------------------------------------------------------------------------------
 cmd_dsp_auxiliary_status:
 		mov		a,auxiliary_reg
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_f_exit
 
 ;============================= INVALID COMMAND HANDLING ============================
@@ -2159,7 +2228,7 @@ cmd_f_none:
 ;   - Clears auto-initialization state
 ; Affects: Port 8 control register
 ;-----------------------------------------------------------------------------------
-cmd_F2:
+cmd_reset_control_dma8:
 		mov		r0,#8
 		movx	a,@r0
 		anl		a,#3
@@ -2178,7 +2247,7 @@ cmd_F2:
 ;   - Clears dual-channel state
 ; Affects: Port 10h control register
 ;-----------------------------------------------------------------------------------
-cmd_F3:
+cmd_reset_control_dma16:
 		mov		r0,#10h
 		movx	a,@r0
 		anl		a,#0
@@ -2195,11 +2264,11 @@ cmd_F3:
 ; Used for firmware validation.
 ; Output: 0A4h, 06Fh
 ;-----------------------------------------------------------------------------------
-cmd_F4:
+cmd_dsp_identify:
 		mov		a,#0a4h
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		mov		a,#6fh
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_f_exit
 
 ;============================= MAILBOX MANAGEMENT COMMANDS =========================
@@ -2217,6 +2286,7 @@ cmd_mailbox_reset_or_diag:
 		nop	
 		movx	@r0,a
 		ljmp	cmdg_f_exit
+
 		; Impossible call in 4.13
 		lcall	X1233
 		ljmp	cmdg_f_exit
@@ -2230,7 +2300,7 @@ cmd_mailbox_reset_or_diag:
 ;   - Enables INT0 for command processing
 ; Affects: adpcm_state_reg, adpcm_mode_reg, Port 4, EX0
 ;-----------------------------------------------------------------------------------
-cmd_F0:
+cmd_init_dma:
 		mov		a,#5ah
 		lcall	X0a0e
 		lcall	X0a26
@@ -2289,7 +2359,7 @@ cmdg_midi:
 cmd_midi_host_write:
 		jnb		ti,cmd_midi_host_write
 		clr		ti
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		sbuf,a
 		ljmp	check_cmd
 
@@ -2842,9 +2912,9 @@ dma_dac1_normal:
 		jnb		dma8_mode,X0ddf
 		jnb		command_byte_1,X0dce
 		clr		ex0
-X0dce:	lcall	dsp_input_data
+X0dce:	lcall	dsp_data_read
 		mov		dma8_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
@@ -2858,11 +2928,11 @@ X0ddf:	clr		dma8_active
 		mov		a,#0
 		movx	@r0,a
 		setb	ea
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_lo,a
 		mov		r0,#0bh
 		movx	@r0,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_hi,a
 		mov		r0,#0ch
 		movx	@r0,a
@@ -3010,9 +3080,9 @@ dma_dac2_adpcm:
 		ljmp	X0eaa
 
 X0e97:	clr		ex0
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		dma8_xfer_len_hi,a
 		setb	dma8_active
 		setb	ex0
@@ -3025,9 +3095,9 @@ X0e97:	clr		ex0
 ;   - Disables auto-init mode
 ;-----------------------------------------------------------------------------------
 X0eaa:	clr		dma8_active
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_hi,a
 		setb	pin_dsp_busy
 		; Set DMA8 mode
@@ -3122,9 +3192,9 @@ X0f02:	setb	ex0
 cmdg_silence:
 		lcall	X0a26
 		clr		dma8_ch1_enable
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_lo,a
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		rem_xfer_len_hi,a
 		mov		adpcm_state_reg,#1
 		mov		adpcm_mode_reg,#2
@@ -3160,14 +3230,28 @@ cmdg_misc:
 ;   9   |  D9h    | cmd_exit_autoinit_dma16		(4bh)
 ;  10   |  DAh    | cmd_exit_autoinit_dma8		(46h)
 ;  11   |  DBh    | cmd_d_none					(10h)
-;  12   |  DCh    | cmd_check_and_set_flag		(0fdh)
-;  13   |  DDh    | cmd_clear_and_exit			(0f2h)
+;  12   |  DCh    | cmd_dsp_challenge_response	(0fdh)
+;  13   |  DDh    | cmd_dsp_clear_challenge		(0f2h)
 ;  14   |  DEh    | cmd_set_start_dma16			(13h)
 ;  15   |  DFh    | cmd_clear_start_dma16		(1ch)
 ; ----------------------------------------------------
 table_misc_cmds:
-		.db	50h,3ch,10h,41h,94h,7fh,0e0h,10h
-		.db	25h,4bh,46h,10h,0fdh,0f2h,13h,1ch
+	.db cmd_pause_dma8				- table_misc_cmds ; D0h
+	.db cmd_speaker_on				- table_misc_cmds ; D1h
+	.db cmd_d_none					- table_misc_cmds ; D2h
+	.db cmd_speaker_off				- table_misc_cmds ; D3h
+	.db cmd_resume_dma8				- table_misc_cmds ; D4h
+	.db cmd_pause_dma16				- table_misc_cmds ; D5h
+	.db cmd_resume_dma16			- table_misc_cmds ; D6h
+	.db cmd_d_none					- table_misc_cmds ; D7h
+	.db cmd_speaker_status			- table_misc_cmds ; D8h
+	.db cmd_exit_autoinit_dma16		- table_misc_cmds ; D9h
+	.db cmd_exit_autoinit_dma8		- table_misc_cmds ; DAh
+	.db cmd_d_none					- table_misc_cmds ; DBh
+	.db cmd_dsp_challenge_response	- table_misc_cmds ; DCh
+	.db cmd_dsp_clear_challenge		- table_misc_cmds ; DDh
+	.db cmd_set_start_dma16			- table_misc_cmds ; DEh
+	.db cmd_clear_start_dma16		- table_misc_cmds ; DFh
 
 ;-----------------------------------------------------------------------------------
 ; 10h: invalid command D2, D7, DB
@@ -3370,7 +3454,7 @@ cmd_resume_dma16:
 ;   - Clears warm boot magic bytes (38h/39h)
 ;   - Resets diagnostic flag diagnostic_flag
 ;-----------------------------------------------------------------------------------
-cmd_clear_and_exit:
+cmd_dsp_clear_challenge:
 		mov		38h,#0
 		mov		39h,#0
 		clr		diagnostic_flag
@@ -3383,7 +3467,7 @@ cmd_clear_and_exit:
 ;   2. Waits for host to send 01h confirmation
 ;   3. Sets diagnostic flag diagnostic_flag on success
 ;-----------------------------------------------------------------------------------
-cmd_check_and_set_flag:
+cmd_dsp_challenge_response:
 		mov		38h,#52h
 		mov		39h,#86h
 		clr		diagnostic_flag
@@ -3449,8 +3533,22 @@ cmdg_ident:
 ;  15   |  EFh    | cmd_e_none               (10h)
 ; -------------------------------------------------
 table_ident_cmds:
-		.db	13h,5fh,2dh,7ah,25h,10h,10h,10h
-		.db	1dh,10h,10h,10h,10h,10h,10h,10h
+	.db cmd_invert_bits			- table_ident_cmds ; E0h
+	.db cmd_dsp_version			- table_ident_cmds ; E1h
+	.db cmd_dsp_dma_id			- table_ident_cmds ; E2h
+	.db cmd_dsp_copyright		- table_ident_cmds ; E3h
+	.db cmd_write_test_reg		- table_ident_cmds ; E4h
+	.db cmd_e_none				- table_ident_cmds ; E5h
+	.db cmd_e_none				- table_ident_cmds ; E6h
+	.db cmd_e_none				- table_ident_cmds ; E7h
+	.db cmd_read_test_reg		- table_ident_cmds ; E8h
+	.db cmd_e_none				- table_ident_cmds ; E9h
+	.db cmd_e_none				- table_ident_cmds ; EAh
+	.db cmd_e_none				- table_ident_cmds ; EBh
+	.db cmd_e_none				- table_ident_cmds ; ECh
+	.db cmd_e_none				- table_ident_cmds ; EDh
+	.db cmd_e_none				- table_ident_cmds ; EEh
+	.db cmd_e_none				- table_ident_cmds ; EFh
 
 ;-----------------------------------------------------------------------------------
 ; 10h: command E5, E6, E7, E9, EA, EB, EC, ED, EE, EF
@@ -3462,9 +3560,9 @@ cmd_e_none:
 ; Inverts bits of received data byte and echoes back
 ;-----------------------------------------------------------------------------------
 cmd_invert_bits:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		cpl		a
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_e_exit
 
 ;------------------------------- Command E8: Read Test Register --------------------
@@ -3472,14 +3570,14 @@ cmd_invert_bits:
 ;-----------------------------------------------------------------------------------
 cmd_read_test_reg:
 		mov		a,2ah
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		ljmp	cmdg_e_exit
 
 ;------------------------------- Command E4: Write Test Register -------------------
 ; Writes value to test register 2Ah
 ;-----------------------------------------------------------------------------------
 cmd_write_test_reg:
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		mov		2ah,a
 		ljmp	cmdg_e_exit
 
@@ -3489,7 +3587,7 @@ cmd_write_test_reg:
 cmd_dsp_dma_id:
 		mov		adpcm_mode_reg,#3
 		lcall	dma_update_control_register
-		lcall	dsp_input_data
+		lcall	dsp_data_read
 		xrl		a,dsp_dma_id1
 		add		a,dsp_dma_id0
 		mov		dsp_dma_id0,a
@@ -3548,7 +3646,7 @@ cmd_dsp_copyright:
 		clr		a
 X10dd:	mov		b,a
 		movc	a,@a+dptr
-		lcall	dsp_output_data
+		lcall	dsp_data_write
 		jz		cmdg_e_exit
 		mov		a,b
 		inc		a
@@ -3800,8 +3898,8 @@ dma_arm_channel:
 ;------------------------------- DSP Input Data ------------------------------------
 ; Waits for host data and reads from port 0
 ;-----------------------------------------------------------------------------------
-dsp_input_data:
-		jnb		pin_dsp_data_rdy,dsp_input_data
+dsp_data_read:
+		jnb		pin_dsp_data_rdy,dsp_data_read
 		mov		r0,#0
 		nop	
 		nop	
@@ -3811,8 +3909,8 @@ dsp_input_data:
 ;------------------------------- DSP Output Data -----------------------------------
 ; Waits for host readiness and writes to port 0
 ;-----------------------------------------------------------------------------------
-dsp_output_data:
-		jb		pin_host_data_rdy,dsp_output_data
+dsp_data_write:
+		jb		pin_host_data_rdy,dsp_data_write
 		mov		r0,#0
 		nop	
 		nop	
