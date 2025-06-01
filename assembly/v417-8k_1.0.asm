@@ -6,9 +6,10 @@
 ; 1. Hanging Note Fix		(int0_main_handler, int1_main_handler)
 ; 2. PSW Fix				(vector_dma_dac_adpcm*, vector_dac_silence)
 ; 3. ADPCM Fix				(adpcm_2_decode @ X10ff)
-; 4. Removed ljmp X006e		(vector_dma_dac_adpcm*, vector_dac_silence, vector_midi_handler)
-; 							(Fixes Duke Nukem II crash on level load)
+; 4. Removed ljmp to X006e	(vector_dma_dac_adpcm*, vector_dac_silence, vector_midi_handler)
 ; 5. setb it1				(start, 4.16 used 'clr it1' which is incorrect)
+; 6. DMA‐Ready Check			(X09a9, poll dsp status (0x0e bit 7) before touching 18h)
+; 							(Should fix Duke Nukem II crashes)
 ;
 ; x. Updated to a custom firmware - Version 4.17
 ; x. Removed unused data at the end.
@@ -2018,6 +2019,13 @@ samplerate_table:
 ; Operation: Performs (17h * samplerate) ÷ 256
 ;--------------------------------------------------------------------------------
 X09a7:
+		mov		r0,#0eh
+
+X09a9:
+		movx	a,@r0
+		anl		a,#80h
+		jz		X09a9
+
 		mov		r0,#18h
 		mov		a,dma_addr_hi
 		cjne	a,#0b1h,X09b1
