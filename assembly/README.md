@@ -10,7 +10,7 @@ Original Creative 4.05 Firmware:<br>
 Original Creative 4.11 Firmware:<br>
 ```v411-8k_4d75e821.asm```<br>
 Original Creative 4.12 Firmware:<br>
-```v412-8k_e5d3a248.asm```<br>
+```v412-8k_f69d1672.asm```<br>
 Original Creative 4.13 Firmware:<br>
 ```v413-8k_e22e9001.asm```<br>
 Original Creative 4.16 Firmware:<br>
